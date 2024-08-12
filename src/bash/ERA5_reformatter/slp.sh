@@ -1,11 +1,12 @@
 # >>> Meta >>>
 varname="slp"
-remote_ERA5_fpath="/work/DATA/Reanalysis/ERA5"
-local_ERA5_fpath="/work/b08209033/DATA/ERA5"
+source_path="/work/DATA/Reanalysis/ERA5"
+destination_path="/work/b08209033/DATA/IndianMonsoon/ERA5"
 # <<< Meta <<<
 
+
 # >>> Extract Filename Patterns >>>
-cd ${remote_ERA5_fpath}/${varname}
+cd ${source_path}/${varname}
 years=();
 for complete_filename in ${varname}_*[0-9]*.nc; do
     filename="${complete_filename%.*}"
@@ -15,11 +16,12 @@ for complete_filename in ${varname}_*[0-9]*.nc; do
         years+=($year)
     fi
 done
-echo "Start year: ${years[0]}"
+years=($(printf '%s\n' "${years[@]}" | sort -n))
+echo "Years: ${years[*]}"
 # <<< Extract Filename Patterns <<<
 
+
 # >>> CDO Mergetime >>>
-cd ${local_ERA5_fpath}
 cdo \
 --no_history \
 -setattribute,history="$(date): Reinitialized by HSUAN-CHENG LIN" \
@@ -27,6 +29,6 @@ cdo \
 -settaxis,"${years[0]}-01-01,09:00:00,24hour" \
 -del29feb \
 -mergetime \
-${remote_ERA5_fpath}/${varname}/${varname}_*[0-9]*.nc \
-${local_ERA5_fpath}/${varname}/${varname}_alltime.nc
+${source_path}/${varname}/${varname}_*[0-9]*.nc \
+${destination_path}/${varname}.nc
 # <<< CDO Mergetime <<<
