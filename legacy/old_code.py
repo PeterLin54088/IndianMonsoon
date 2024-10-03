@@ -250,3 +250,142 @@ def equiv_theta_and_streamfunction_composites_animation_generator(
 
     ani = animation.FuncAnimation(fig, run, frames=70, interval=100, init_func=init)
     return ani
+
+
+
+def plot_spectral_contour(
+    PSD_data,
+    spectral_grid,
+    wavenumber_range,
+    title,
+    xlabel,
+    ylabel,
+    log_value=True,
+):
+    """Helper function to plot a spectral contour with filled levels and contours."""
+    wavenumbers, positive_frequencies = spectral_grid[2], spectral_grid[0]
+    plt.rcParams.update({"font.size": 22})
+
+    plt.figure(figsize=(16, 9), dpi=160)
+
+    wavenum_indices = slice(
+        np.argmax(wavenumbers >= wavenumber_range[0]),
+        np.argmax(wavenumbers >= wavenumber_range[1]) + 1,
+    )
+    if log_value:
+        plt.contourf(
+            wavenumbers[wavenum_indices],
+            positive_frequencies,
+            np.log10(PSD_data[:, wavenum_indices]),
+            levels=16,
+            cmap="Greys",
+        )
+        plt.contour(
+            wavenumbers[wavenum_indices],
+            positive_frequencies,
+            np.log10(PSD_data[:, wavenum_indices]),
+            levels=32,
+            colors="black",
+        )
+    else:
+        plt.contourf(
+            wavenumbers[wavenum_indices],
+            positive_frequencies,
+            PSD_data[:, wavenum_indices],
+            levels=16,
+            cmap="Greys",
+            extend="min",
+        )
+        plt.contour(
+            wavenumbers[wavenum_indices],
+            positive_frequencies,
+            PSD_data[:, wavenum_indices],
+            levels=32,
+            colors="black",
+        )
+    plt.plot([0, 0], [0, positive_frequencies[-1]], "k--", lw=2, zorder=20)
+    plt.gca().add_patch(
+        Rectangle(
+            (wavenumber_range[0], positive_frequencies[0]),
+            wavenumber_range[1] - wavenumber_range[0],
+            positive_frequencies[1] - positive_frequencies[0],
+            edgecolor="white",
+            facecolor="white",
+            fill=True,
+            lw=4,
+            zorder=10,
+        )
+    )
+
+    plt.gca().add_patch(
+        Rectangle(
+            (wavenumber_range[0], positive_frequencies[-2]),
+            wavenumber_range[1] - wavenumber_range[0],
+            positive_frequencies[1] - positive_frequencies[0],
+            edgecolor="white",
+            facecolor="white",
+            fill=True,
+            lw=4,
+            zorder=10,
+        )
+    )
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+
+
+def OLR_PSD_plot(olr_PSD, olr_spectral_grid, type="Undefined"):
+    olr_positive_PSD, positive_spectral_grid = extract_positive_PSD(
+        olr_PSD, olr_spectral_grid
+    )
+
+    plot_spectral_contour(
+        olr_positive_PSD,
+        positive_spectral_grid,
+        wavenumber_range=(-50, 50),
+        title=f"OLR {type} Log Power Spectrum",
+        xlabel="wavenumbers",
+        ylabel="frequencies (cpd)",
+    )
+    return 0
+
+
+def OLR_background_PSD_plot(olr_PSD, olr_spectral_grid):
+    positive_background_PSD, positive_spectral_grid = extract_positive_PSD(
+        olr_PSD, olr_spectral_grid
+    )
+
+    plot_spectral_contour(
+        positive_background_PSD,
+        positive_spectral_grid,
+        wavenumber_range=(-15, 15),
+        title="OLR Background Log Power Spectrum",
+        xlabel="wavenumbers",
+        ylabel="frequencies (cpd)",
+    )
+    return 0
+
+
+def OLR_PSD_ratio_plot(
+    olr_PSD, olr_background_PSD, olr_spectral_grid, var="OLR", type="Undefined"
+):
+    positive_PSD, positive_spectral_grid = extract_positive_PSD(
+        olr_PSD, olr_spectral_grid
+    )
+    positive_background_PSD, _ = extract_positive_PSD(
+        olr_background_PSD, olr_spectral_grid
+    )
+
+    PSD_ratio = positive_PSD / positive_background_PSD
+
+    plot_spectral_contour(
+        PSD_ratio,
+        positive_spectral_grid,
+        wavenumber_range=(-50, 50),
+        title=f"{var} {type} Power Spectrum Ratio",
+        xlabel="wavenumbers",
+        ylabel="frequencies (cpd)",
+        log_value=False,
+    )
+    return 0
