@@ -1,41 +1,4 @@
-import numpy as np
-from scipy.signal import detrend as scipy_linear_detrend
-
-
-def decompose_symmetric_antisymmetric(data, axis):
-    """
-    Decompose data into symmetric and antisymmetric components along the specified axis.
-
-    For latitude-dependent variables (e.g., f(y)), the decomposition is:
-      - Symmetric: (f(y) + f(-y)) / 2
-      - Antisymmetric: (f(y) - f(-y)) / 2
-      - Total: f(y) = Symmetric + Antisymmetric
-
-    Parameters:
-    data (ndarray): Input array to decompose.
-    axis (int): Axis along which the decomposition is applied.
-
-    Returns:
-    tuple: (symmetric_component, antisymmetric_component)
-
-    Note:
-    Ensure the data includes the full latitude range (e.g., from -L to L) for proper decomposition,
-    as symmetry is defined relative to the equator.
-    """
-    # Pre-allocate memory for symmetric and antisymmetric components
-    symmetric_component = np.empty_like(data)
-    antisymmetric_component = np.empty_like(data)
-    # Perform in-place operations to avoid temporary arrays
-    np.add(data, np.flip(data, axis=axis), out=symmetric_component)
-    symmetric_component /= 2
-    np.subtract(data, np.flip(data, axis=axis), out=antisymmetric_component)
-    antisymmetric_component /= 2
-    return symmetric_component, antisymmetric_component
-
-
-def compute_stochastic_PSD(
-    data, data_grid, segment_length=96, overlap_length=65, taper=None
-):
+def compute_stochastic_PSD(data, data_grid, taper=None):
     """
     Compute the stochastic Power Spectral Density (PSD) from segmented time series data.
 
@@ -67,17 +30,9 @@ def compute_stochastic_PSD(
     - The wavenumbers returned are nondimensional ordinary wavenumbers, not angular wavenumbers.
     """
 
-    def segment_data(array, segment_length, overlap_length):
-        """Segment the input array into overlapping subarrays."""
-        step = segment_length - overlap_length
-        num_segments = (len(array) - overlap_length) // step
-        return np.array(
-            [array[i : i + segment_length] for i in range(0, num_segments * step, step)]
-        )
-
     def default_taper():
         """Generate a default Hanning-like taper for the first and last third of the segment."""
-        taper_window = np.ones(segment_length)
+        taper_window = np.ones(96)
         third_len = len(taper_window) // 3
         taper_cosine = 0.5 * (
             1 - np.cos(2 * np.pi * np.arange(third_len) / (2 * third_len))
@@ -87,16 +42,21 @@ def compute_stochastic_PSD(
         return taper_window
 
     # Use provided taper window or generate the default one
-    taper_window = default_taper() if taper is None else taper
+    time_window = default_taper()
+    lon_window = taper if taper is None else taper
 
     # Segment, detrend, taper, and perform FFT over time and longitude
-    tmp = segment_data(np.copy(data), segment_length, overlap_length)
+    tmp = segment_data(np.copy(data), 96, 65)
     tmp = scipy_linear_detrend(tmp, axis=1)
 
     # Apply taper across the time axis
     tmp = np.swapaxes(tmp, axis1=1, axis2=-1)
-    tmp *= taper_window
+    tmp *= time_window
     tmp = np.swapaxes(tmp, axis1=1, axis2=-1)
+
+    # Apply taper across the longitude axis
+    if lon_window is not None:
+        tmp *= lon_window
 
     # FFT along longitude and time axes
     tmp = np.fft.fft(tmp, axis=-1, norm="ortho")
@@ -113,7 +73,7 @@ def compute_stochastic_PSD(
     wavemode_longitude = np.fft.fftshift(
         np.fft.fftfreq(PSD.shape[-1], 1 / PSD.shape[-1])
     )
-    wavemode_time = np.fft.fftshift(np.fft.fftfreq(segment_length, 1 / segment_length))
+    wavemode_time = np.fft.fftshift(np.fft.fftfreq(96, 1 / 96))
 
     # Update the data grid with modified time and longitude wavenumbers
     modified_data_grid = list(data_grid)
@@ -168,56 +128,3 @@ def extract_positive_PSD(PSD, spectral_grid, axis=0):
     modified_spectral_grid[axis] = positive_frequencies
 
     return positive_psd, tuple(modified_spectral_grid)
-
-
-def apply_121_filter(array, axis, iterations):
-    """
-    Apply a simple 1-2-1 Gaussian filter along a specified axis using convolution.
-    Boundary extension is used to handle Parsevel's identity.
-
-    Parameters:
-    array : ndarray
-        The input data array to be filtered.
-    axis : int
-        The axis along which the filter is applied.
-    iterations : int
-        Number of times the filter is applied.
-
-    Returns:
-    result : ndarray
-        The filtered array with the same shape as the input array.
-    """
-
-    def extend_boundaries(arr, ax):
-        """Extend boundaries by duplicating the first and last elements along the given axis."""
-        if ax < 0 or ax >= arr.ndim:
-            raise ValueError(
-                f"Axis {ax} is out of bounds for array with {arr.ndim} dimensions."
-            )
-
-        # Create slices for first and last elements along the axis
-        first_slice = [slice(None)] * arr.ndim
-        last_slice = [slice(None)] * arr.ndim
-        first_slice[ax] = slice(0, 1)
-        last_slice[ax] = slice(-1, None)
-
-        # Extend array by adding duplicated boundaries
-        return np.concatenate(
-            [arr[tuple(first_slice)], arr, arr[tuple(last_slice)]], axis=ax
-        )
-
-    def convolve_along_axis(data, axis, kernel):
-        """Extend boundaries and convolve along the specified axis."""
-        extended_data = extend_boundaries(data, axis)
-        return np.apply_along_axis(
-            lambda m: np.convolve(m, kernel, mode="valid"), axis=axis, arr=extended_data
-        )
-
-    # Simple 1-2-1 Gaussian kernel
-    kernel = np.array([1 / 4, 1 / 2, 1 / 4])
-
-    result = np.copy(array)
-    for _ in range(iterations):
-        result = convolve_along_axis(result, axis, kernel)
-
-    return result
