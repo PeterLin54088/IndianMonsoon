@@ -1,113 +1,172 @@
 import numpy as np
 
 
-def dispersion_kelvin(k):
+def dispersion_kelvin(zonal_wavenumbers: np.ndarray) -> np.ndarray:
     """
-    Dispersion relation for Kelvin waves.
+    Calculate the nondimensional dispersion relation for Kelvin waves.
 
-    Parameters:
-    k : array-like
-        Nondimensional wavenumber values.
+    Parameters
+    ----------
+    zonal_wavenumbers : np.ndarray
+        Nondimensional zonal wavenumber values.
 
-    Returns:
-    omega_positive : array-like
-        Nondimensional positive frequency (omega) values, NaN for negative values.
+    Returns
+    -------
+    np.ndarray
+        Nondimensional positive frequency values. Negative frequency values are replaced with NaN.
 
-    Notes:
-    The original function is real-valued and exhibits Hermitian symmetry in the wavenumber-frequency space.
-    By convention, scientists retain only the positive frequencies, and this function follows that tradition.
+    Notes
+    -----
+    - This function calculates the dispersion relation for Kelvin waves, where the nondimensional frequency
+      is equal to the nondimensional zonal wavenumber.
+    - Only positive frequency values are retained by convention, with negative values replaced by NaN.
     """
-    dispersion_relation = lambda k: k
-    omega = dispersion_relation(k)
-    omega_positive = np.where(omega >= 0, omega, np.nan)
-    return omega_positive
+
+    # Define the dispersion relation for Kelvin waves: frequency = zonal_wavenumbers
+    def dispersion_relation(zonal_wavenumbers: np.ndarray) -> np.ndarray:
+        return zonal_wavenumbers
+
+    # Calculate the frequencies using the dispersion relation
+    frequencies = dispersion_relation(zonal_wavenumbers)
+
+    # Retain only positive frequency values, replace negatives with NaN
+    positive_frequencies = np.where(frequencies >= 0, frequencies, np.nan)
+
+    return positive_frequencies
 
 
-def dispersion_mrg(k):
+def dispersion_mrg(zonal_wavenumbers: np.ndarray) -> np.ndarray:
     """
-    Dispersion relation for Mixed Rossby-Gravity (MRG) waves.
+    Calculate the nondimensional dispersion relation for Mixed Rossby-Gravity (MRG) waves.
 
-    Parameters:
-    k : array-like
-        Nondimensional wavenumber values.
+    Parameters
+    ----------
+    zonal_wavenumbers : np.ndarray
+        Nondimensional zonal wavenumber values.
 
-    Returns:
-    omega_positive : array-like
-        Nondimensional positive frequency (omega) values, NaN for negative values.
+    Returns
+    -------
+    np.ndarray
+        Nondimensional positive frequency values. Negative frequency values are replaced with NaN.
 
-    Notes:
-    The original function is real-valued and exhibits Hermitian symmetry in the wavenumber-frequency space.
-    By convention, scientists retain only the positive frequencies, and this function follows that tradition.
+    Notes
+    -----
+    - This function calculates the dispersion relation for MRG waves, where the nondimensional frequency
+      is derived from the zonal wavenumbers.
+    - Only positive frequency values are retained by convention, with negative values replaced by NaN.
     """
-    dispersion_relation = lambda k: k / 2 + np.sqrt(1 + k**2 / 4)
-    omega = dispersion_relation(k)
-    omega_positive = np.where(omega >= 0, omega, np.nan)
-    return omega_positive
+
+    # Define the dispersion relation for MRG waves
+    def dispersion_relation(zonal_wavenumbers: np.ndarray) -> np.ndarray:
+        return zonal_wavenumbers / 2 + np.sqrt(1 + (zonal_wavenumbers**2) / 4)
+
+    # Calculate the frequencies using the dispersion relation
+    frequencies = dispersion_relation(zonal_wavenumbers)
+
+    # Retain only positive frequency values, replace negatives with NaN
+    positive_frequencies = np.where(frequencies >= 0, frequencies, np.nan)
+
+    return positive_frequencies
 
 
-def dispersion_poincare(k, m=1, first_guess=np.inf, niter=50):
+def dispersion_poincare(
+    zonal_wavenumbers: np.ndarray, meridional_mode_number: int = 1
+) -> np.ndarray:
     """
-    Dispersion relation for Poincaré waves.
+    Calculate the nondimensional dispersion relation for Poincare waves using a numerical iterative approach.
 
-    Parameters:
-    k : array-like
-        Nondimensional wavenumber values.
-    m : int, optional
-        Meridional mode number, default is 1.
-    first_guess : float, optional
-        Initial guess for omega, default is infinity.
-    niter : int, optional
-        Number of iterations for refinement, default is 50.
+    Parameters
+    ----------
+    zonal_wavenumbers : np.ndarray
+        Nondimensional zonal wavenumber values.
+    meridional_mode_number : int, optional
+        Meridional mode number (default is 1).
 
-    Returns:
-    omega_positive : array-like
-        Nondimensional positive frequency (omega) values, NaN for negative values.
+    Returns
+    -------
+    np.ndarray
+        Nondimensional positive frequency values. Negative frequency values are replaced with NaN.
 
-    Notes:
-    The dispersion relation for Poincaré waves is a cubic function, making the analytical solution complex.
-    An iterative approach is used to approximate the solution.
-    The original function is real-valued and exhibits Hermitian symmetry in the wavenumber-frequency space.
-    By tradition, only the positive frequencies are retained.
+    Notes
+    -----
+    - This function uses an iterative approach to solve for the nondimensional frequency of Poincare waves
+      since there is no analytical solution to the dispersion relation.
+    - Only positive frequency values are retained by convention, with negative values replaced by NaN.
     """
-    dispersion_relation = lambda omega: np.sqrt(2 * m + 1 + k**2 + k / omega)
 
-    omega_approx = dispersion_relation(first_guess)
-    for _ in range(niter):
-        omega_approx = dispersion_relation(omega_approx)
+    # Define the dispersion relation for Poincare waves
+    def dispersion_relation(frequency: np.ndarray) -> np.ndarray:
+        return np.sqrt(
+            2 * meridional_mode_number
+            + 1
+            + zonal_wavenumbers**2
+            + zonal_wavenumbers / frequency
+        )
 
-    omega_positive = np.where(omega_approx >= 0, omega_approx, np.nan)
-    return omega_positive
+    # Initial guess for frequency and number of iterations
+    initial_guess = np.inf
+    num_iterations = 50
+
+    # Start with the initial guess for frequency
+    frequencies_approximation = dispersion_relation(initial_guess)
+
+    # Perform iterative refinement of the frequency
+    for _ in range(num_iterations):
+        frequencies_approximation = dispersion_relation(frequencies_approximation)
+
+    # Retain only positive frequency values, replace negatives with NaN
+    positive_frequencies = np.where(
+        frequencies_approximation >= 0, frequencies_approximation, np.nan
+    )
+
+    return positive_frequencies
 
 
-def dispersion_rossby(k, m=1, first_guess=0.0, niter=50):
+def dispersion_rossby(
+    zonal_wavenumbers: np.ndarray, meridional_mode_number: int = 1
+) -> np.ndarray:
     """
-    Dispersion relation for Rossby waves.
+    Calculate the nondimensional dispersion relation for Rossby waves using a numerical iterative approach.
 
-    Parameters:
-    k : array-like
-        Nondimensional wavenumber values.
-    m : int, optional
-        Meridional mode number, default is 1.
-    first_guess : float, optional
-        Initial guess for omega, default is 0.
-    niter : int, optional
-        Number of iterations for refinement, default is 50.
+    Parameters
+    ----------
+    zonal_wavenumbers : np.ndarray
+        Nondimensional zonal wavenumber values.
+    meridional_mode_number : int, optional
+        Meridional mode number (default is 1).
 
-    Returns:
-    omega_positive : array-like
-        Nondimensional positive frequency (omega) values, NaN for negative values.
+    Returns
+    -------
+    np.ndarray
+        Nondimensional positive frequency values. Negative frequency values are replaced with NaN.
 
-    Notes:
-    The dispersion relation for Rossby waves is a cubic function, making the analytical solution complex.
-    An iterative approach is used to approximate the solution.
-    The original function is real-valued and exhibits Hermitian symmetry in the wavenumber-frequency space.
-    By tradition, only the positive frequencies are retained.
+    Notes
+    -----
+    - This function uses an iterative approach to solve for the nondimensional frequency of Rossby waves
+      since there is no analytical solution to the dispersion relation.
+    - Only positive frequency values are retained by convention, with negative values replaced by NaN.
     """
-    dispersion_relation = lambda omega: -(k + omega**3) / (2 * m + 1 + k**2)
 
-    omega_approx = dispersion_relation(first_guess)
-    for _ in range(niter):
-        omega_approx = dispersion_relation(omega_approx)
+    # Define the dispersion relation for Rossby waves
+    def dispersion_relation(frequency: np.ndarray) -> np.ndarray:
+        return -(zonal_wavenumbers + frequency**3) / (
+            2 * meridional_mode_number + 1 + zonal_wavenumbers**2
+        )
 
-    omega_positive = np.where(omega_approx >= 0, omega_approx, np.nan)
-    return omega_positive
+    # Initial guess for frequency and number of iterations
+    initial_guess = 0.0
+    num_iterations = 50
+
+    # Start with the initial guess for frequency
+    frequencies_approximation = dispersion_relation(initial_guess)
+
+    # Perform iterative refinement of the frequency
+    for _ in range(num_iterations):
+        frequencies_approximation = dispersion_relation(frequencies_approximation)
+
+    # Retain only positive frequency values, replace negatives with NaN
+    positive_frequencies = np.where(
+        frequencies_approximation >= 0, frequencies_approximation, np.nan
+    )
+
+    return positive_frequencies
