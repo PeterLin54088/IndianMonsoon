@@ -542,27 +542,14 @@ def calculate_SPSD(
     # Load data and dimensions from the dataset
     with Dataset(file_path) as dataset:
         dims = {dim: dataset[dim][:] for dim in dataset[variable_name].dimensions}
+        data_slices = [slice(None)] * len(dataset[variable_name].dimensions)
 
-        # Determine slicing based on available dimensions
-        time_slice = (
-            slice(None) if "time" in dataset[variable_name].dimensions else None
-        )
-        plev_slice = (
-            pressure_level if "plev" in dataset[variable_name].dimensions else None
-        )
-        lat_slice = slice(None) if "lat" in dataset[variable_name].dimensions else None
-        lon_slice = slice(None) if "lon" in dataset[variable_name].dimensions else None
-
-        data_slices = [None] * len(dataset[variable_name].dimensions)
         for idx, dim in enumerate(dataset[variable_name].dimensions):
-            if dim == "time":
-                data_slices[idx] = time_slice
+            if dim == "time" or dim == "lat" or dim == "lon":
+                continue
             elif dim == "plev":
-                data_slices[idx] = plev_slice
-            elif dim == "lat":
-                data_slices[idx] = lat_slice
-            elif dim == "lon":
-                data_slices[idx] = lon_slice
+                data_slices[idx] = pressure_level
+                dims[dim] = dims[dim][data_slices[idx]]
 
         # Extract the data for the variable using the slices
         data = dataset[variable_name][tuple(data_slices)]
@@ -575,7 +562,7 @@ def calculate_SPSD(
         dims["lon"] >= INDIAN_MASK.LONGITUDE_WEST
     )
 
-    # Generate a longitudinal window with tapering if necessary
+    # Longitudinal window using Hanning-like function
     lon_window = np.zeros_like(dims["lon"])
     taper_len = len(lon_window[lon_mask]) // 10
     if np.all(lon_mask):
@@ -588,7 +575,7 @@ def calculate_SPSD(
     else:
         lon_window = 1.0  # No tapering for small regions
 
-    # Temporal window using Hanning function
+    # Temporal window using Hanning-like function
     temp_window = np.ones(WK99.SEGMENTATION_LENGTH)
     taper_len = WK99.SEGMENTATION_LENGTH // 3
     taper = 0.5 * (1 - np.cos(2 * np.pi * np.arange(taper_len) / (2 * taper_len)))
@@ -605,6 +592,7 @@ def calculate_SPSD(
     # Mask the symmetric and antisymmetric components by latitude
     symmetric_components = symmetric_components[:, lat_mask, :]
     antisymmetric_components = antisymmetric_components[:, lat_mask, :]
+    dims["lat"] = dims["lat"][lat_mask]
 
     # Segment the components for analysis
     symmetric_components = segment_data(
@@ -631,7 +619,7 @@ def calculate_SPSD(
     symmetric_components *= lon_window
     antisymmetric_components *= lon_window
 
-    # Perform FFT in both wavenumber (lon) and frequency (time) directions
+    # Perform FFT in both zonal wavenumber (lon) and frequency (time) directions
     symmetric_components = np.fft.fft(symmetric_components, axis=-1, norm="ortho")
     symmetric_components = np.fft.ifft(symmetric_components, axis=1, norm="ortho")
 
@@ -675,7 +663,6 @@ def calculate_SPSD(
         {
             "segmentation_frequency": CPD_frequency,
             "zonal_wavenumber": ordinary_wavenumber,
-            "lat": dims["lat"][lat_mask],
         }
     )
 
@@ -688,106 +675,119 @@ def calculate_filtered_signal(
     segmentation_frequency_limit: np.ndarray,
     variable_name: str = "Undefined",
     pressure_level: int = -1,
-) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+) -> tuple[np.ndarray, np.ndarray, dict[str, np.ndarray]]:
     """
-    Calculate a filtered signal from the dataset by applying frequency and wavenumber filters.
+    Filter out signal by decomposing into symmetric and antisymmetric components, FFT and mask out coefficient
+    , and inverse FFT to derive filtered signal.
 
     Parameters:
-    ----------
-    file_path : str
-        Path to the dataset (NetCDF format).
-    zonal_wavenumber_limit : np.ndarray
-        2-element array specifying the range of zonal wavenumber limits.
-    segmentation_frequency_limit : np.ndarray
-        2-element array specifying the range of frequency limits in cycles per day (CPD).
-    variable_name : str, optional
-        Name of the variable to be processed (default is "Undefined").
-    pressure_level : int, optional
-        Pressure level to slice the data if the 'plev' dimension exists (default is -1).
+    - file_path (str): Path to the NetCDF dataset.
+    - zonal_wavenumber_limit (np.ndarray): Bounds for the zonal wavenumber filter (min, max).
+    - segmentation_frequency_limit (np.ndarray): Bounds for frequency filter (min, max).
+    - variable_name (str): Name of the variable to process in the dataset.
+    - pressure_level (int): Pressure level index to slice data on if it contains a "plev" dimension.
 
     Returns:
-    -------
-    tuple
-        Filtered data (ndarray) and dimensions (dict).
+        tuple: A tuple containing:
+            - Symmetric components of the PSD.
+            - Antisymmetric components of the PSD.
+            - Dictionary of relevant dimensions.
     """
     from gc import collect as free_memory
+    from utils import decompose_symmetric_antisymmetric
     from constants import INDIAN_MASK
 
     # Load data and dimensions from the dataset
     with Dataset(file_path) as dataset:
         dims = {dim: dataset[dim][:] for dim in dataset[variable_name].dimensions}
+        data_slices = [slice(None)] * len(dataset[variable_name].dimensions)
 
-        # Determine slicing based on available dimensions
-        time_slice = (
-            slice(None) if "time" in dataset[variable_name].dimensions else None
-        )
-        plev_slice = (
-            pressure_level if "plev" in dataset[variable_name].dimensions else None
-        )
-        lat_slice = (
-            (dims["lat"] <= INDIAN_MASK.LATITUDE_NORTH)
-            & (dims["lat"] >= INDIAN_MASK.LATITUDE_SOUTH)
-            if "lat" in dataset[variable_name].dimensions
-            else None
-        )
-        # lat_slice = slice(None) if "lat" in dataset[variable_name].dimensions else None
-        lon_slice = slice(None) if "lon" in dataset[variable_name].dimensions else None
-
-        data_slices = [None] * len(dataset[variable_name].dimensions)
         for idx, dim in enumerate(dataset[variable_name].dimensions):
-            if dim == "time":
-                data_slices[idx] = time_slice
+            if dim == "time" or dim == "lat" or dim == "lon":
+                continue
             elif dim == "plev":
-                data_slices[idx] = plev_slice
-            elif dim == "lat":
-                data_slices[idx] = lat_slice
-            elif dim == "lon":
-                data_slices[idx] = lon_slice
+                data_slices[idx] = pressure_level
+                dims[dim] = dims[dim][data_slices[idx]]
 
         # Extract the data for the variable using the slices
         data = dataset[variable_name][tuple(data_slices)]
 
-    # lon_mask = (dims["lon"] <= INDIAN_MASK.longitude_east) & (
-    #     dims["lon"] >= INDIAN_MASK.longitude_west
-    # )
+    # Mask latitudes based on geographic boundaries defined in INDIAN_MASK
+    lat_mask = (dims["lat"] <= INDIAN_MASK.LATITUDE_NORTH) & (
+        dims["lat"] >= INDIAN_MASK.LATITUDE_SOUTH
+    )
+
+    # Decompose data into symmetric and antisymmetric components
+    symmetric_components, antisymmetric_components = decompose_symmetric_antisymmetric(
+        data, axis=1
+    )
+    del data
+    free_memory()
+
+    # Mask the symmetric and antisymmetric components by latitude
+    symmetric_components = symmetric_components[:, lat_mask, :]
+    antisymmetric_components = antisymmetric_components[:, lat_mask, :]
+    dims["lat"] = dims["lat"][lat_mask]
 
     # Perform FFT in both wavenumber (lon) and frequency (time) directions
-    data = np.fft.fft(data, axis=-1, norm="ortho")
-    data = np.fft.ifft(data, axis=0, norm="ortho")
+    symmetric_components = np.fft.fft(symmetric_components, axis=-1, norm="ortho")
+    symmetric_components = np.fft.ifft(symmetric_components, axis=0, norm="ortho")
+    antisymmetric_components = np.fft.fft(
+        antisymmetric_components, axis=-1, norm="ortho"
+    )
+    antisymmetric_components = np.fft.ifft(
+        antisymmetric_components, axis=0, norm="ortho"
+    )
 
     # Compute the wavenumber and frequency
-    ordinary_wavenumber = np.fft.fftfreq(data.shape[-1], 1 / data.shape[-1])
-    CPD_frequency = np.fft.fftfreq(data.shape[0], 1 / data.shape[0]) / data.shape[0]
-
-    # Create masks for zonal wavenumber and frequency filtering
-    zonal_wavenumber_mask = np.logical_not(
-        (
-            (ordinary_wavenumber >= zonal_wavenumber_limit[0])
-            & (ordinary_wavenumber <= zonal_wavenumber_limit[1])
-        )
-        | (
-            (ordinary_wavenumber <= -zonal_wavenumber_limit[0])
-            & (ordinary_wavenumber >= -zonal_wavenumber_limit[1])
-        )
+    ordinary_wavenumber = np.fft.fftfreq(
+        symmetric_components.shape[-1], 1 / symmetric_components.shape[-1]
     )
-    CPD_frequency_mask = np.logical_not(
+    CPD_frequency = (
+        np.fft.fftfreq(symmetric_components.shape[0], 1 / symmetric_components.shape[0])
+        / symmetric_components.shape[0]
+    )
+
+    # Create a filter mask based on zonal wavenumber and frequency limits
+    mask = np.zeros_like(symmetric_components, dtype=bool)
+
+    # Positive wavenumber and frequency filtering
+    t_mask, y_mask, x_mask = np.meshgrid(
         (
             (CPD_frequency >= segmentation_frequency_limit[0])
             & (CPD_frequency <= segmentation_frequency_limit[1])
-        )
-        | (
-            (CPD_frequency <= -segmentation_frequency_limit[0])
-            & (CPD_frequency >= -segmentation_frequency_limit[1])
-        )
+        ),
+        np.ones(len(dims["lat"]), dtype=bool),
+        (ordinary_wavenumber >= zonal_wavenumber_limit[0])
+        & (ordinary_wavenumber <= zonal_wavenumber_limit[1]),
+        indexing="ij",
     )
-    mask = np.ones_like(data, dtype=float)
-    mask[CPD_frequency_mask, :, :] = 0.0
-    mask[:, :, zonal_wavenumber_mask] = 0.0
+    mask = np.logical_or(mask, (t_mask & x_mask))
 
-    # Apply the masks to the data
-    data *= mask
+    # Negative wavenumber and frequency filtering
+    t_mask, y_mask, x_mask = np.meshgrid(
+        (
+            (CPD_frequency >= -segmentation_frequency_limit[1])
+            & (CPD_frequency <= -segmentation_frequency_limit[0])
+        ),
+        np.ones(len(dims["lat"]), dtype=bool),
+        (ordinary_wavenumber >= -zonal_wavenumber_limit[1])
+        & (ordinary_wavenumber <= -zonal_wavenumber_limit[0]),
+        indexing="ij",
+    )
+    mask = np.logical_or(mask, (t_mask & x_mask))
+
+    # Apply mask to the symmetric and antisymmetric components
+    symmetric_components *= mask
+    antisymmetric_components *= mask
 
     # Perform inverse FFT to bring the data back to the spatial and time domain
-    data = np.fft.fft(data, axis=0, norm="ortho")
-    data = np.fft.ifft(data, axis=-1, norm="ortho")
-    return data, dims
+    symmetric_components = np.fft.fft(symmetric_components, axis=0, norm="ortho")
+    symmetric_components = np.fft.ifft(symmetric_components, axis=-1, norm="ortho")
+    antisymmetric_components = np.fft.fft(
+        antisymmetric_components, axis=0, norm="ortho"
+    )
+    antisymmetric_components = np.fft.ifft(
+        antisymmetric_components, axis=-1, norm="ortho"
+    )
+    return symmetric_components, antisymmetric_components, dims
