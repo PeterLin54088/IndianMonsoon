@@ -14,7 +14,8 @@ class ProjectPathManager:
 
     NAME: str
     ABSOLUTE_PATH_MAIN: str
-    ABSOLUTE_PATH_ERA5: str
+    ABSOLUTE_PATH_ERA5_RAW: str
+    ABSOLUTE_PATH_ERA5_SPARSE: str
     ABSOLUTE_PATH_TEMPEST: str
     ABSOLUTE_PATH_SATELLITE_TEST: str
     ABSOLUTE_PATH_IMAGES: str
@@ -24,7 +25,8 @@ class ProjectPathManager:
 ENVIRONMENT_PATH = ProjectPathManager(
     NAME="IndianMonsoon",
     ABSOLUTE_PATH_MAIN="/work/b08209033/DATA/IndianMonsoon",
-    ABSOLUTE_PATH_ERA5="/work/b08209033/DATA/IndianMonsoon/ERA5",
+    ABSOLUTE_PATH_ERA5_RAW="/work/b08209033/DATA/IndianMonsoon/ERA5/raw_grid",
+    ABSOLUTE_PATH_ERA5_SPARSE="/work/b08209033/DATA/IndianMonsoon/ERA5/sparse_grid",
     ABSOLUTE_PATH_TEMPEST="/work/b08209033/DATA/IndianMonsoon/TempestExtremes",
     ABSOLUTE_PATH_SATELLITE_TEST="/work/b08209033/DATA/IndianMonsoon/Satellite",
     ABSOLUTE_PATH_IMAGES="/home/b08209033/IndianMonsoon/img",
@@ -84,8 +86,8 @@ class IndianMonsoonRegionMask:
 #     LONGITUDE_WEST=45,
 # )
 INDIAN_MASK = IndianMonsoonRegionMask(
-    LATITUDE_NORTH=30,
-    LATITUDE_SOUTH=-30,
+    LATITUDE_NORTH=15,
+    LATITUDE_SOUTH=-15,
     LONGITUDE_EAST=360,
     LONGITUDE_WEST=0,
 )
@@ -161,4 +163,4 @@ class WK99Constants:
 
 
 # Constants for the WK99 data segmentation approach
-WK99 = WK99Constants(SEGMENTATION_LENGTH=96, OVERLAP_LENGTH=65, SAMPLE_RATE=1)
+WK99 = WK99Constants(SEGMENTATION_LENGTH=96, OVERLAP_LENGTH=10, SAMPLE_RATE=1)

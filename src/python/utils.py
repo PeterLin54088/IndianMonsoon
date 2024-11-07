@@ -109,9 +109,7 @@ def split_dimension(
     return reshaped_array
 
 
-def decompose_symmetric_antisymmetric(
-    data: np.ndarray, axis: int
-) -> tuple[np.ndarray, np.ndarray]:
+def decompose_symmetric_antisymmetric(data: np.ndarray, axis: int) -> np.ndarray:
     """
     Decompose a dataset into its symmetric and antisymmetric components along a specified axis.
 
@@ -124,10 +122,10 @@ def decompose_symmetric_antisymmetric(
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
-        A tuple containing:
-        - symmetric_component (np.ndarray): The symmetric part of the data.
-        - antisymmetric_component (np.ndarray): The antisymmetric part of the data.
+    np.ndarray
+        A np.ndarray with first dimension contains:
+        - symmetric_component : The symmetric part of the data.
+        - antisymmetric_component : The antisymmetric part of the data.
 
     Notes
     -----
@@ -148,7 +146,7 @@ def decompose_symmetric_antisymmetric(
     np.subtract(data, flipped_data, out=antisymmetric_component)
     antisymmetric_component /= 2
 
-    return symmetric_component, antisymmetric_component
+    return np.array([symmetric_component, antisymmetric_component])
 
 
 def segment_data(
@@ -178,7 +176,7 @@ def segment_data(
     -----
     - The input array can have any number of dimensions, and the output will have one additional
       dimension compared to the input.
-    - Segmentation occurs along the first axis of the array by default.
+    - Segmentation occurs along the second axis of the array by default.
     """
 
     from constants import WK99  # Import constants for default values if not provided
@@ -193,18 +191,26 @@ def segment_data(
     step = segment_length - overlap_length
 
     # Determine the number of full segments that can be generated from the array
-    num_segments = (array.shape[0] - overlap_length) // step
+    num_segments = (array.shape[1] - overlap_length) // step
 
     # Create an array of slices (each of length `segment_length`) along the first axis
-    segments = np.array(
-        [array[i : i + segment_length] for i in range(0, num_segments * step, step)]
-    )
+    segmented_shape = list(array.shape)
+    segmented_shape.pop(1)
+    segmented_shape.insert(1, num_segments)
+    segmented_shape.insert(2, segment_length)
+    segments = np.empty(shape=tuple(segmented_shape), dtype=float)
+    for i in range(0, num_segments):
+        start = i * step
+        end = i * step + segment_length
+        segments[:, i, :, :, :] = array[:, start:end, :, :]
 
     # Move the new segmentation dimension to the front and maintain other dimensions
     return segments
 
 
-def apply_121_filter(data: np.ndarray, axis: int, iterations: int = 10) -> np.ndarray:
+def apply_121_filter(
+    data: np.ndarray, axis: int = -1, iterations: int = 10
+) -> np.ndarray:
     """
     Apply a 1-2-1 filter along a specified axis using convolution.
     The filter is applied iteratively, with boundary extension to keep Parsevel's identity.
@@ -275,9 +281,9 @@ def apply_121_filter(data: np.ndarray, axis: int, iterations: int = 10) -> np.nd
         np.ndarray
             The convolved array.
         """
-        extended_arr = extend_boundaries(arr, axis)
+        extended_arr = extend_boundaries(arr, ax=ax)
         return np.apply_along_axis(
-            lambda m: np.convolve(m, kernel, mode="valid"), axis=axis, arr=extended_arr
+            lambda m: np.convolve(m, kernel, mode="valid"), axis=ax, arr=extended_arr
         )
 
     # Create a copy of the input data to avoid modifying the original array

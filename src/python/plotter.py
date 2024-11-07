@@ -1055,7 +1055,8 @@ def display_wavenumber_frequency_diagram(
     frequency_poincare_m2 = compute_frequency(
         dispersion_poincare, meridional_mode_number=2
     )
-    frequency_rossby = compute_frequency(dispersion_rossby)
+    frequency_rossby_m1 = compute_frequency(dispersion_rossby, meridional_mode_number=1)
+    frequency_rossby_m2 = compute_frequency(dispersion_rossby, meridional_mode_number=2)
 
     # Slicing indices for wavenumbers and frequencies
     wavenum_indices = slice(
@@ -1071,7 +1072,7 @@ def display_wavenumber_frequency_diagram(
     plt.ioff()
     plt.rcParams.update({"font.size": 14})
     fig, axes = plt.subplots(
-        nrows=2, ncols=2, figsize=(16, 9), dpi=160, sharex=True, sharey=True
+        nrows=2, ncols=2, figsize=(16, 9), dpi=320, sharex=True, sharey=True
     )
     fig.suptitle(f"{variable_name}", fontsize=24)
 
@@ -1097,6 +1098,9 @@ def display_wavenumber_frequency_diagram(
         colors="black",
         levels=np.linspace(np.min(_z), np.max(_z), 15, endpoint=True),
     )
+    axes[0, 0].plot(zonal_wavemodes, frequency_kelvin[:, :], "k-")
+    axes[0, 0].plot(zonal_wavemodes, frequency_poincare_m1[:, :], "k-")
+    axes[0, 0].plot(zonal_wavemodes, frequency_rossby_m1[:, :], "k-")
     axes[0, 0].plot([0, 0], [0, 0.5], "k--", lw=1)
     axes[0, 0].set_ylabel("Frequencies (cyles per day)")
     axes[0, 0].set_title("Symmetric PSD")
@@ -1118,6 +1122,9 @@ def display_wavenumber_frequency_diagram(
         colors="black",
         levels=np.linspace(np.min(_z), np.max(_z), 15, endpoint=True),
     )
+    axes[0, 1].plot(zonal_wavemodes, frequency_mrg[:, :], "k-")
+    axes[0, 1].plot(zonal_wavemodes, frequency_poincare_m2[:, :], "k-")
+    axes[0, 1].plot(zonal_wavemodes, frequency_rossby_m2[:, :], "k-")
     axes[0, 1].plot([0, 0], [0, 0.5], "k--", lw=1)
     axes[0, 1].set_title("Antisymmetric PSD")
 
@@ -1129,8 +1136,8 @@ def display_wavenumber_frequency_diagram(
         _x,
         _y,
         _z,
-        cmap="Greys",
-        levels=np.linspace(1.1, 2.9, 10, endpoint=True),
+        cmap="jet",
+        levels=np.linspace(0.6, 2.0, 15, endpoint=True),
         extend="max",
     )
     axes[1, 0].contour(
@@ -1138,12 +1145,12 @@ def display_wavenumber_frequency_diagram(
         _y,
         _z,
         colors="black",
-        levels=np.linspace(0.7, 2.9, 23, endpoint=True),
-        linewidths=0.5,
+        levels=np.linspace(0.6, 2.0, 15, endpoint=True),
+        linewidths=0.2,
     )
     axes[1, 0].plot(zonal_wavemodes, frequency_kelvin[:, :], "k-")
     axes[1, 0].plot(zonal_wavemodes, frequency_poincare_m1[:, :], "k-")
-    axes[1, 0].plot(zonal_wavemodes, frequency_rossby[:, :], "k-")
+    axes[1, 0].plot(zonal_wavemodes, frequency_rossby_m1[:, :], "k-")
     axes[1, 0].plot([0, 0], [0, 0.5], "k--", lw=1)
     if box:
         tmp_patch = Rectangle(
@@ -1170,8 +1177,8 @@ def display_wavenumber_frequency_diagram(
         _x,
         _y,
         _z,
-        cmap="Greys",
-        levels=np.linspace(1.0, 3, 11),
+        cmap="jet",
+        levels=np.linspace(0.6, 2.0, 15, endpoint=True),
         extend="max",
     )
     axes[1, 1].contour(
@@ -1179,11 +1186,12 @@ def display_wavenumber_frequency_diagram(
         _y,
         _z,
         colors="black",
-        levels=np.linspace(1.0, 3, 11),
-        linewidths=0.5,
+        levels=np.linspace(0.6, 2.0, 15, endpoint=True),
+        linewidths=0.2,
     )
     axes[1, 1].plot(zonal_wavemodes, frequency_mrg[:, :], "k-")
     axes[1, 1].plot(zonal_wavemodes, frequency_poincare_m2[:, :], "k-")
+    axes[1, 1].plot(zonal_wavemodes, frequency_rossby_m2[:, :], "k-")
     axes[1, 1].plot([0, 0], [0, 0.5], "k--", lw=1)
     if box:
         tmp_patch = Rectangle(

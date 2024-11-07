@@ -1,7 +1,7 @@
 # >>> Meta >>>
 varname="slp"
 source_path="/work/DATA/Reanalysis/ERA5"
-destination_path="/work/b08209033/DATA/IndianMonsoon/ERA5"
+destination_path="/work/b08209033/DATA/IndianMonsoon/ERA5/raw_grid"
 # <<< Meta <<<
 
 
