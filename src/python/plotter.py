@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib
 import matplotlib.animation as animation
@@ -108,19 +109,75 @@ def display_streamfunction_composites_evolution(
     matplotlib.animation.FuncAnimation
         An animation object showing the evolution of streamfunction composites.
     """
+    from datetime import datetime, timedelta
+
+    refdate = datetime(1979, 1, 1)
+
     early_composite, late_composite = streamfunction_composite
 
     # Turn off interactive mode for plotting and set font size globally
-    plt.ioff()
-    plt.rcParams.update({"font.size": 28})
+    plt.rcParams.update({"font.size": 24})
+    contour_levels = np.linspace(
+        -2e10, 2e10, 11, endpoint=True
+    )  # Define contour levels
 
     # Create a figure with two subplots (early and late onset)
-    figure, axes = plt.subplots(
-        nrows=1, ncols=2, figsize=(16, 9), dpi=160, sharex=True, sharey=True
-    )
+    fig = plt.figure(figsize=(16, 9), dpi=160, layout="constrained")
+    spec = fig.add_gridspec(1, 31)
+    ax0 = fig.add_subplot(spec[:15])
+    ax1 = fig.add_subplot(spec[15:30])
+    ax2 = fig.add_subplot(spec[-1])
+    axes = (ax0, ax1, ax2)
 
     def init_animation():
         """Initialize the animation with an empty list (no content initially)."""
+        # Early Onset Composite Plot
+        axes[0].contourf(
+            grids["lat"],
+            grids["plev"],
+            early_composite[start],
+            levels=contour_levels,
+            extend="both",
+            cmap="RdBu_r",
+        )
+        axes[0].contour(
+            grids["lat"],
+            grids["plev"],
+            early_composite[start],
+            levels=contour_levels,
+            colors="k",
+        )
+
+        axes[0].set_xlabel("Latitude")
+        axes[0].set_ylabel("Pressure (hPa)")
+        axes[0].invert_yaxis()  # Invert the y-axis (pressure levels)
+        axes[0].set_title("Early Onset")
+
+        # Late Onset Composite Plot
+        img = axes[1].contourf(
+            grids["lat"],
+            grids["plev"],
+            late_composite[start],
+            levels=contour_levels,
+            extend="both",
+            cmap="RdBu_r",
+        )
+        axes[1].contour(
+            grids["lat"],
+            grids["plev"],
+            late_composite[start],
+            levels=contour_levels,
+            colors="k",
+        )
+        axes[1].set_xlabel("Latitude")
+        axes[1].set_title("Late Onset")
+        axes[1].invert_yaxis()  # Invert the y-axis (pressure levels)
+        # Colorbar
+        cbar = plt.colorbar(img, cax=axes[2])
+        cbar.set_ticks(contour_levels)
+        # Update the figure's overall title with the calendar day
+        date = (refdate + timedelta(days=start)).strftime("%m/%d")
+        fig.suptitle(f"Variable: $\phi$\nDate: {date}")
         return []
 
     def update_frame(days):
@@ -132,14 +189,8 @@ def display_streamfunction_composites_evolution(
         days : int
             The current day index for updating the frame.
         """
-        contour_levels = np.linspace(-2e10, 2e10, 16)  # Define contour levels
-
         # Early Onset Composite Plot
         axes[0].cla()  # Clear the previous plot
-        axes[0].invert_yaxis()  # Invert the y-axis (pressure levels)
-        axes[0].set_title("Early Onset")
-        axes[0].set_ylabel("Pressure (hPa)")
-        axes[0].set_xlabel("Latitude")
         axes[0].contourf(
             grids["lat"],
             grids["plev"],
@@ -155,12 +206,15 @@ def display_streamfunction_composites_evolution(
             levels=contour_levels,
             colors="k",
         )
-
+        axes[0].set_title("Early Onset")
+        axes[0].set_xlabel("Latitude")
+        axes[0].set_xticks([5, 10, 15, 20])
+        axes[0].set_ylabel("Pressure (hPa)")
+        axes[0].set_yticks([1000, 925, 850, 700, 500, 250, 200, 100])
+        axes[0].invert_yaxis()  # Invert the y-axis (pressure levels)
         # Late Onset Composite Plot
         axes[1].cla()  # Clear the previous plot
-        axes[1].set_title("Late Onset")
-        axes[1].set_xlabel("Latitude")
-        axes[1].contourf(
+        img = axes[1].contourf(
             grids["lat"],
             grids["plev"],
             late_composite[start + days],
@@ -175,16 +229,18 @@ def display_streamfunction_composites_evolution(
             levels=contour_levels,
             colors="k",
         )
-
-        # Update the figure's overall title with the calendar day
-        figure.suptitle(f"Streamfunction\nCalendar Date = {start + days}")
-        plt.tight_layout()
-
+        axes[1].set_title("Late Onset")
+        axes[1].set_xlabel("Latitude")
+        axes[1].set_xticks([5, 10, 15, 20])
+        axes[1].set_yticks([1000, 925, 850, 700, 500, 250, 200, 100])
+        axes[1].invert_yaxis()  # Invert the y-axis (pressure levels)
+        date = (refdate + timedelta(days=start + days)).strftime("%m/%d")
+        fig.suptitle(f"Variable: $\Psi$, Date: {date}")
         return []
 
     # Create the animation object with the initialized and updated frames
     animation_obj = animation.FuncAnimation(
-        figure,
+        fig,
         update_frame,
         frames=step,
         interval=100,
@@ -889,17 +945,57 @@ def display_streamfunction_and_mse_flux_composite_evolution(
     matplotlib.animation.FuncAnimation
         An animation object showing the evolution of streamfunction and MSE flux composites.
     """
+    from datetime import datetime, timedelta
+
+    refdate = datetime(1979, 1, 1)
+
     # Turn off interactive mode for plotting and set font size
     plt.ioff()
-    plt.rcParams.update({"font.size": 26})
+    plt.rcParams.update({"font.size": 24})
 
     # Create a figure with a single axis for the animation
     figure, ax = plt.subplots(
-        nrows=1, ncols=1, figsize=(16, 9), dpi=160, sharex=True, sharey=True
+        nrows=1,
+        ncols=1,
+        figsize=(16, 9),
+        dpi=160,
+        sharex=True,
+        sharey=True,
+        layout="constrained",
     )
+    # Define contour levels for MSE flux and streamfunction
+    mse_levels = np.linspace(-2e4, 2e4, 11)
+    stream_levels = np.linspace(-2e10, 2e10, 11)
 
     def init_animation():
         """Initialize the animation with no initial content."""
+        ax.invert_yaxis()
+        img = ax.contourf(
+            mse_flux_grids["lat"],
+            mse_flux_grids["plev"],
+            mse_flux_early_composite[start],
+            levels=mse_levels,
+            extend="both",
+            cmap="RdBu",
+        )
+
+        # Overlay streamfunction contours
+        ax.contour(
+            streamfunction_grids["lat"],
+            streamfunction_grids["plev"],
+            streamfunction_early_composite[start],
+            levels=stream_levels,
+            colors="k",
+        )
+
+        # Set labels for axes and title
+        ax.set_xlabel("Latitude")
+        ax.set_ylabel("Pressure (hPa)")
+        cbar = plt.colorbar(img)
+        cbar.set_ticks(mse_levels)
+        date = (refdate + timedelta(days=start)).strftime("%m/%d")
+        figure.suptitle(r"Variable: $\omega*MSE$, " + f"Date: {date}")
+
         return []
 
     def update_frame(days):
@@ -915,18 +1011,14 @@ def display_streamfunction_and_mse_flux_composite_evolution(
         ax.cla()
         ax.invert_yaxis()  # Invert y-axis to display pressure levels top-down
 
-        # Define contour levels for MSE flux and streamfunction
-        mse_levels = np.linspace(-2.5e4, 2.5e4, 16)
-        stream_levels = np.linspace(-2e10, 2e10, 16)
-
         # Plot MSE flux as filled contours
-        ax.contourf(
+        img = ax.contourf(
             mse_flux_grids["lat"],
             mse_flux_grids["plev"],
             mse_flux_early_composite[start + days],
             levels=mse_levels,
             extend="both",
-            cmap="RdBu_r",
+            cmap="RdBu",
         )
 
         # Overlay streamfunction contours
@@ -940,12 +1032,11 @@ def display_streamfunction_and_mse_flux_composite_evolution(
 
         # Set labels for axes and title
         ax.set_xlabel("Latitude")
+        ax.set_xticks([5, 10, 15, 20])
         ax.set_ylabel("Pressure (hPa)")
-        figure.suptitle(
-            f"Contour - Streamfunction\nShading - MSE flux\nCalendar Date = {start + days}"
-        )
-        plt.tight_layout()
-
+        ax.set_yticks([1000, 925, 850, 700, 500, 250, 200, 100])
+        date = (refdate + timedelta(days=start + days)).strftime("%m/%d")
+        figure.suptitle(r"Variable: $\omega*MSE$, " + f"Date: {date}")
         return []
 
     # Create the animation object
@@ -964,49 +1055,21 @@ def display_wavenumber_frequency_diagram(
     symmetric_PSD: np.ndarray,
     antisymmetric_PSD: np.ndarray,
     background_PSD: np.ndarray,
-    grids: dict[str, np.ndarray],
-    box: list[tuple[float, float], float, float] = None,
-    variable_name: str = "Undefined",
-    zonal_wavemodes: np.ndarray = np.linspace(-15, 15, 121, endpoint=True),
-    reference_latitude: float = 0.0,
-    equivalent_depths: np.ndarray = np.array([12.5, 25.0, 50.0]),
+    dimensions: dict[str, np.ndarray],
+    **settings,
 ) -> tuple[matplotlib.figure.Figure, matplotlib.artist.Artist.axes]:
     """
-    Display a wavenumber-frequency diagram for symmetric and antisymmetric Power Spectral Density (PSD),
-    and plot theoretical dispersion relations (Kelvin, Rossby, Poincare, MRG).
-
-    Parameters:
-    ----------
-    symmetric_PSD : np.ndarray
-        The symmetric power spectral density data.
-    antisymmetric_PSD : np.ndarray
-        The antisymmetric power spectral density data.
-    background_PSD : np.ndarray
-        The background power spectral density for normalization.
-    grids : dict of np.ndarray
-        A dictionary containing the grid data for "zonal_wavenumber", "segmentation_frequency", and "lat".
-    box : list, optional
-        A list defining a bounding box on the plot, specified as [(x_start, y_start), width, height].
-    variable_name : str, optional
-        The name of the variable being plotted (default is "Undefined").
-    zonal_wavemodes : np.ndarray, optional
-        Array of zonal wavemodes to plot (default is np.linspace(-15, 15, 121)).
-    reference_latitude : float, optional
-        Latitude used for Coriolis parameter calculations (default is 0.0).
-    equivalent_depths : np.ndarray, optional
-        Array of equivalent depths for calculating gravity wave speeds (default is [12.5, 25.0, 50.0]).
-
-    Returns:
-    -------
-    tuple
-        A tuple containing the figure and axes used for plotting.
-
     Notes:
     -------
     - **Zonal Wavenumber (k)**: In the wave expression e^{i k x}, where x ∈ [0, 2πR], the zonal wavenumber k = N/R defines the spatial frequency of the wave in the zonal direction, specifying how many oscillations occur over the distance 2πR.
     - **Zonal Wavemode (N)**: In the expression e^{i N/R x}, where x ∈ [0, 2πR], N is a positive integer that quantifies the number of wave oscillations around the full zonal circumference 2πR. Larger N values correspond to more oscillations over the same distance.
     """
-    from constants import EARTH
+
+    # import
+    from matplotlib import cm
+    from matplotlib.colors import ListedColormap
+    from matplotlib.style import context
+    from constants import EARTH, ENVIRONMENT_PATH
     from Vallis_dispersion_relation import (
         dispersion_kelvin,
         dispersion_poincare,
@@ -1019,14 +1082,41 @@ def display_wavenumber_frequency_diagram(
         rescale_to_days_and_ordinary_frequency,
     )
 
+    # kwargs
+    settings.setdefault("wk_filter", None)
+    settings.setdefault("variable_name", "Undefined")
+    settings.setdefault("zonal_wavemodes", np.linspace(-15, 15, 121, endpoint=True))
+    settings.setdefault("reference_latitude", 0.0)  # degrees
+    settings.setdefault("equivalent_depths", np.array([12.5, 25.0, 50.0]))  # m/s
+    settings.setdefault("dispersion_order", None)
+    settings.setdefault("cmap_type", "default")
+
+    # range
+    wavenumber_indices = slice(
+        np.argmax(dimensions["zonal_wavenumber"] >= settings["zonal_wavemodes"][0]),
+        np.argmax(dimensions["zonal_wavenumber"] >= settings["zonal_wavemodes"][-1])
+        + 1,
+    )
+    frequency_indices = slice(
+        np.argmax(dimensions["segmentation_frequency"] > 0),
+        np.argmax(dimensions["segmentation_frequency"]) + 1,
+    )
+
+    # cmap
+    Greys = cm.get_cmap("Greys", 150)
+    StepGreys = Greys(np.linspace(0, 1, 150))
+    StepGreys[: 15 * 4, :] = np.array([1, 1, 1, 1])
+    StepGreys = ListedColormap(StepGreys)
+
+    # dispersion relation
     def compute_frequency(
         dispersion_function,
-        meridional_mode_number=None,
+        meridional_mode_number: int = None,
     ):
         """Compute the CPD (cycles per day) frequency using a given dispersion function."""
-        zonal_wavenumbers = zonal_wavemodes / EARTH.RADIUS
-        f_coriolis, rossby_parameter = get_f_beta(reference_latitude)
-        gravity_wave_speeds = get_gravity_wave_speed(equivalent_depths)
+        zonal_wavenumbers = settings["zonal_wavemodes"] / EARTH.RADIUS
+        f_coriolis, rossby_parameter = get_f_beta(settings["reference_latitude"])
+        gravity_wave_speeds = get_gravity_wave_speed(settings["equivalent_depths"])
         characteristic_length = np.sqrt(gravity_wave_speeds / rossby_parameter)
         characteristic_time = 1 / np.sqrt(gravity_wave_speeds * rossby_parameter)
 
@@ -1058,380 +1148,233 @@ def display_wavenumber_frequency_diagram(
     frequency_rossby_m1 = compute_frequency(dispersion_rossby, meridional_mode_number=1)
     frequency_rossby_m2 = compute_frequency(dispersion_rossby, meridional_mode_number=2)
 
-    # Slicing indices for wavenumbers and frequencies
-    wavenum_indices = slice(
-        np.argmax(grids["zonal_wavenumber"] >= zonal_wavemodes[0]),
-        np.argmax(grids["zonal_wavenumber"] >= zonal_wavemodes[-1]) + 1,
-    )
-    freq_indices = slice(
-        np.argmax(grids["segmentation_frequency"] >= 0) + 1,
-        np.argmax(grids["segmentation_frequency"]),
-    )
+    # dispersion line order
+    dispersion_order_list = {
+        "original": {
+            "symmetric": [
+                frequency_kelvin,
+                frequency_poincare_m1,
+                frequency_rossby_m1,
+            ],
+            "antisymmetric": [
+                frequency_mrg,
+                frequency_poincare_m2,
+                frequency_rossby_m2,
+            ],
+        },
+        "reverse": {
+            "symmetric": [
+                frequency_mrg,
+                frequency_poincare_m2,
+                frequency_rossby_m2,
+            ],
+            "antisymmetric": [
+                frequency_kelvin,
+                frequency_poincare_m1,
+                frequency_rossby_m1,
+            ],
+        },
+    }
+    if settings["dispersion_order"] not in dispersion_order_list:
+        raise ValueError("Invalid dispersion_order. Choose 'original' or 'reverse'.")
+    cmap_type_list = ["default", "tradition"]
+    if settings["cmap_type"] not in cmap_type_list:
+        raise ValueError("Invalid cmap_type. Choose 'default' or 'tradition'.")
 
-    # Plotting setup
-    plt.ioff()
-    plt.rcParams.update({"font.size": 14})
-    fig, axes = plt.subplots(
-        nrows=2, ncols=2, figsize=(16, 9), dpi=320, sharex=True, sharey=True
-    )
-    fig.suptitle(f"{variable_name}", fontsize=24)
-
-    # Extract grid dimensions for plotting
-    _x = grids["zonal_wavenumber"][wavenum_indices]
-    _y = grids["segmentation_frequency"][freq_indices]
-    lat_weighting = np.cos(np.deg2rad(grids["lat"]))  # Latitude weighting for averaging
-
-    # Symmetric PSD [0, 0]
-    _z = np.average(symmetric_PSD, axis=1, weights=lat_weighting)
-    _z = np.log10(_z)[freq_indices, wavenum_indices]
-    axes[0, 0].contourf(
-        _x,
-        _y,
-        _z,
-        cmap="Greys",
-        levels=np.linspace(np.min(_z), np.max(_z), 8, endpoint=True),
-    )
-    axes[0, 0].contour(
-        _x,
-        _y,
-        _z,
-        colors="black",
-        levels=np.linspace(np.min(_z), np.max(_z), 15, endpoint=True),
-    )
-    axes[0, 0].plot(zonal_wavemodes, frequency_kelvin[:, :], "k-")
-    axes[0, 0].plot(zonal_wavemodes, frequency_poincare_m1[:, :], "k-")
-    axes[0, 0].plot(zonal_wavemodes, frequency_rossby_m1[:, :], "k-")
-    axes[0, 0].plot([0, 0], [0, 0.5], "k--", lw=1)
-    axes[0, 0].set_ylabel("Frequencies (cyles per day)")
-    axes[0, 0].set_title("Symmetric PSD")
-
-    # Antisymmetric PSD [0, 1]
-    _z = np.average(antisymmetric_PSD, axis=1, weights=lat_weighting)
-    _z = np.log10(_z)[freq_indices, wavenum_indices]
-    axes[0, 1].contourf(
-        _x,
-        _y,
-        _z,
-        cmap="Greys",
-        levels=np.linspace(np.min(_z), np.max(_z), 8, endpoint=True),
-    )
-    axes[0, 1].contour(
-        _x,
-        _y,
-        _z,
-        colors="black",
-        levels=np.linspace(np.min(_z), np.max(_z), 15, endpoint=True),
-    )
-    axes[0, 1].plot(zonal_wavemodes, frequency_mrg[:, :], "k-")
-    axes[0, 1].plot(zonal_wavemodes, frequency_poincare_m2[:, :], "k-")
-    axes[0, 1].plot(zonal_wavemodes, frequency_rossby_m2[:, :], "k-")
-    axes[0, 1].plot([0, 0], [0, 0.5], "k--", lw=1)
-    axes[0, 1].set_title("Antisymmetric PSD")
-
-    # Symmetric PSD Ratio [1, 0]
-    tmp_1 = np.average(symmetric_PSD, axis=1, weights=lat_weighting)
-    tmp_2 = np.average(background_PSD, axis=1, weights=lat_weighting)
-    _z = (tmp_1 / tmp_2)[freq_indices, wavenum_indices]
-    axes[1, 0].contourf(
-        _x,
-        _y,
-        _z,
-        cmap="jet",
-        levels=np.linspace(0.6, 2.0, 15, endpoint=True),
-        extend="max",
-    )
-    axes[1, 0].contour(
-        _x,
-        _y,
-        _z,
-        colors="black",
-        levels=np.linspace(0.6, 2.0, 15, endpoint=True),
-        linewidths=0.2,
-    )
-    axes[1, 0].plot(zonal_wavemodes, frequency_kelvin[:, :], "k-")
-    axes[1, 0].plot(zonal_wavemodes, frequency_poincare_m1[:, :], "k-")
-    axes[1, 0].plot(zonal_wavemodes, frequency_rossby_m1[:, :], "k-")
-    axes[1, 0].plot([0, 0], [0, 0.5], "k--", lw=1)
-    if box:
-        tmp_patch = Rectangle(
-            xy=(box[0][0], box[0][1]),
-            width=box[1],
-            height=box[2],
-            edgecolor="red",
-            linewidth=2,
-            fill=False,
+    # Fig.1 Symmetric
+    with context("default"):
+        fig, ax = plt.subplots(
+            nrows=1, ncols=1, figsize=(16, 9), dpi=160, layout="constrained"
         )
-
-        axes[1, 0].add_patch(tmp_patch)
-    else:
-        pass
-    axes[1, 0].set_xlabel("Wavenumbers (cycle per unit)")
-    axes[1, 0].set_ylabel("Frequencies (cyles per day)")
-    axes[1, 0].set_title("Symmetric PSD ratio")
-
-    # Antisymmetric PSD Ratio [1, 1]
-    tmp_1 = np.average(antisymmetric_PSD, axis=1, weights=lat_weighting)
-    tmp_2 = np.average(background_PSD, axis=1, weights=lat_weighting)
-    _z = (tmp_1 / tmp_2)[freq_indices, wavenum_indices]
-    axes[1, 1].contourf(
-        _x,
-        _y,
-        _z,
-        cmap="jet",
-        levels=np.linspace(0.6, 2.0, 15, endpoint=True),
-        extend="max",
-    )
-    axes[1, 1].contour(
-        _x,
-        _y,
-        _z,
-        colors="black",
-        levels=np.linspace(0.6, 2.0, 15, endpoint=True),
-        linewidths=0.2,
-    )
-    axes[1, 1].plot(zonal_wavemodes, frequency_mrg[:, :], "k-")
-    axes[1, 1].plot(zonal_wavemodes, frequency_poincare_m2[:, :], "k-")
-    axes[1, 1].plot(zonal_wavemodes, frequency_rossby_m2[:, :], "k-")
-    axes[1, 1].plot([0, 0], [0, 0.5], "k--", lw=1)
-    if box:
-        tmp_patch = Rectangle(
-            xy=(box[0][0], box[0][1]),
-            width=box[1],
-            height=box[2],
-            edgecolor="red",
-            linewidth=2,
-            fill=False,
-        )
-
-        axes[1, 1].add_patch(tmp_patch)
-    else:
-        pass
-    axes[1, 1].set_xlabel("Wavenumbers (cycle per unit)")
-    axes[1, 1].set_title("Antisymmetric PSD ratio")
-    axes[1, 1].set_ylim(0, 0.5)
-
-    plt.tight_layout()
-    return fig, axes
-
-
-def display_wavenumber_frequency_diagram_evolution(
-    symmetric_PSD: np.ndarray,
-    antisymmetric_PSD: np.ndarray,
-    background_PSD: np.ndarray,
-    grids: dict[str, np.ndarray],
-    box: list[tuple[float, float], float, float] = None,
-    variable_name: str = "Undefined",
-    zonal_wavemodes: np.ndarray = np.linspace(-15, 15, 121, endpoint=True),
-    reference_latitude: float = 0.0,
-    equivalent_depths: np.ndarray = np.array([12.5, 25.0, 50.0]),
-) -> matplotlib.animation.FuncAnimation:
-    """
-    Display the evolution of wavenumber-frequency diagrams as an animation for both
-    symmetric and antisymmetric PSDs (Power Spectral Densities), over a range of latitudes.
-
-    Parameters:
-    ----------
-    symmetric_PSD : np.ndarray
-        The symmetric power spectral density data (3D: [frequencies, latitudes, wavenumbers]).
-    antisymmetric_PSD : np.ndarray
-        The antisymmetric power spectral density data (3D: [frequencies, latitudes, wavenumbers]).
-    background_PSD : np.ndarray
-        The background power spectral density data used for normalization.
-    grids : dict of np.ndarray
-        A dictionary containing grid data with keys:
-        - "lat" (latitude),
-        - "zonal_wavenumber" (zonal wavenumbers),
-        - "segmentation_frequency" (frequencies).
-    box : list, optional
-        A list defining a bounding box on the plot, specified as [(x_start, y_start), width, height].
-    variable_name : str, optional
-        The name of the variable being plotted (default is "Undefined").
-    zonal_wavemodes : np.ndarray, optional
-        Array of zonal wavemodes to plot (default is np.linspace(-15, 15, 121)).
-    reference_latitude : float, optional
-        The latitude used for Coriolis parameter calculations (default is 0.0).
-    equivalent_depths : np.ndarray, optional
-        Array of equivalent depths for calculating gravity wave speeds (default is [12.5, 25.0, 50.0]).
-
-    Returns:
-    -------
-    matplotlib.animation.FuncAnimation
-        Animation object for the evolution of symmetric and antisymmetric PSD diagrams.
-    """
-    from constants import EARTH
-    from Vallis_dispersion_relation import (
-        dispersion_kelvin,
-        dispersion_poincare,
-        dispersion_mrg,
-        dispersion_rossby,
-    )
-    from utils import (
-        get_f_beta,
-        get_gravity_wave_speed,
-        rescale_to_days_and_ordinary_frequency,
-    )
-
-    # Create figure and axes for the symmetric and antisymmetric plots
-    plt.ioff()  # Turn off interactive plotting
-    plt.rcParams.update({"font.size": 18})  # Set font size
-    figure, axes = plt.subplots(
-        nrows=1, ncols=2, figsize=(16, 9), dpi=160, sharex=True, sharey=True
-    )
-
-    def compute_frequency(
-        dispersion_function,
-        meridional_mode_number=None,
-    ):
-        """Compute the CPD (cycles per day) frequency using a given dispersion function."""
-        zonal_wavenumbers = zonal_wavemodes / EARTH.RADIUS
-        f_coriolis, rossby_parameter = get_f_beta(reference_latitude)
-        gravity_wave_speeds = get_gravity_wave_speed(equivalent_depths)
-        characteristic_length = np.sqrt(gravity_wave_speeds / rossby_parameter)
-        characteristic_time = 1 / np.sqrt(gravity_wave_speeds * rossby_parameter)
-
-        # Non-dimensionalize wavenumbers and compute frequency
-        nondimensional_wavenumbers = (
-            zonal_wavenumbers[:, np.newaxis] * characteristic_length
-        )
-        nondimensional_frequency = (
-            dispersion_function(
-                nondimensional_wavenumbers,
-                meridional_mode_number=meridional_mode_number,
+        plt.rcParams.update({"font.size": 24})
+        x = dimensions["zonal_wavenumber"][wavenumber_indices]
+        y = dimensions["segmentation_frequency"][frequency_indices]
+        z = (symmetric_PSD / background_PSD)[frequency_indices, wavenumber_indices]
+        if settings["cmap_type"] == "default":
+            img = ax.contourf(
+                x,
+                y,
+                z,
+                cmap="jet",
+                levels=np.linspace(0.6, 2.0, 15, endpoint=True),
+                extend="both",
+                zorder=-10,
             )
-            if meridional_mode_number
-            else dispersion_function(nondimensional_wavenumbers)
-        )
-        dimensional_frequency = nondimensional_frequency * (1 / characteristic_time)
-        CPD_frequency = rescale_to_days_and_ordinary_frequency(dimensional_frequency)
-        return CPD_frequency
-
-    # Calculate theoretical dispersion line
-    frequency_kelvin = compute_frequency(dispersion_kelvin)
-    frequency_mrg = compute_frequency(dispersion_mrg)
-    frequency_poincare_m1 = compute_frequency(
-        dispersion_poincare, meridional_mode_number=1
-    )
-    frequency_poincare_m2 = compute_frequency(
-        dispersion_poincare, meridional_mode_number=2
-    )
-    frequency_rossby = compute_frequency(dispersion_rossby)
-
-    # Slicing indices for wavenumbers and frequencies
-    wavenum_indices = slice(
-        np.argmax(grids["zonal_wavenumber"] >= zonal_wavemodes[0]),
-        np.argmax(grids["zonal_wavenumber"] >= zonal_wavemodes[-1]) + 1,
-    )
-    freq_indices = slice(
-        np.argmax(grids["segmentation_frequency"] >= 0) + 1,
-        np.argmax(grids["segmentation_frequency"]),
-    )
-
-    # Extract grid dimensions for plotting
-    _x = grids["zonal_wavenumber"][wavenum_indices]
-    _y = grids["segmentation_frequency"][freq_indices]
-    step = symmetric_PSD.shape[1]
-
-    def init_animation():
-        """Initialize the animation."""
-        return []
-
-    def update_frame(ilat):
-        """Update the animation frame by frame."""
-        axes[0].cla()
-        axes[1].cla()
-
-        # Symmetric PSD ratio
-        _z = (symmetric_PSD / background_PSD)[freq_indices, ilat, wavenum_indices]
-        axes[0].contourf(
-            _x,
-            _y,
-            _z,
-            levels=np.linspace(1.1, 2.9, 10, endpoint=True),
-            extend="max",
-            cmap="Greys",
-        )
-        axes[0].contour(
-            _x,
-            _y,
-            _z,
-            colors="black",
-            levels=np.linspace(0.7, 2.9, 23, endpoint=True),
-            linewidths=0.5,
-        )
-        axes[0].plot(zonal_wavemodes, frequency_kelvin[:, :], "k-")
-        axes[0].plot(zonal_wavemodes, frequency_poincare_m1[:, :], "k-")
-        axes[0].plot(zonal_wavemodes, frequency_rossby[:, :], "k-")
-        if box:
-            tmp_patch = Rectangle(
-                xy=(box[0][0], box[0][1]),
-                width=box[1],
-                height=box[2],
-                edgecolor="red",
-                linewidth=2,
-                fill=False,
-            )
-
-            axes[0].add_patch(tmp_patch)
         else:
-            pass
-
-        # Antisymmetric PSD ratio
-        _z = (antisymmetric_PSD / background_PSD)[freq_indices, ilat, wavenum_indices]
-        axes[1].contourf(
-            _x,
-            _y,
-            _z,
-            levels=np.linspace(1.1, 2.9, 10, endpoint=True),
-            extend="max",
-            cmap="Greys",
-        )
-        axes[1].contour(
-            _x,
-            _y,
-            _z,
-            colors="black",
-            levels=np.linspace(0.7, 2.9, 23, endpoint=True),
-            linewidths=0.5,
-        )
-        axes[1].plot(zonal_wavemodes, frequency_mrg[:, :], "k-")
-        axes[1].plot(zonal_wavemodes, frequency_poincare_m2[:, :], "k-")
-        if box:
-            tmp_patch = Rectangle(
-                xy=(box[0][0], box[0][1]),
-                width=box[1],
-                height=box[2],
-                edgecolor="red",
-                linewidth=2,
-                fill=False,
+            img = ax.contourf(
+                x,
+                y,
+                z,
+                cmap=StepGreys,
+                levels=np.linspace(0.6, 2.0, 15, endpoint=True),
+                extend="both",
+                zorder=-10,
             )
+        plt.colorbar(img, ax=ax)
+        ax.contour(
+            x,
+            y,
+            z,
+            colors="black",
+            levels=np.linspace(0.6, 2.0, 15, endpoint=True),
+            linewidths=0.4,
+            zorder=-9,
+        )
+        ax.plot([0, 0], [0, 0.5], "k--", lw=1, zorder=-2)
+        ax.plot([-15, 15], [1 / 30, 1 / 30], "k--", lw=1, zorder=-2)
+        ax.plot([-15, 15], [1 / 6, 1 / 6], "k--", lw=1, zorder=-2)
+        ax.plot([-15, 15], [1 / 3, 1 / 3], "k--", lw=1, zorder=-2)
 
-            axes[1].add_patch(tmp_patch)
+        # Add dispersion curves
+        for freq in dispersion_order_list[settings["dispersion_order"]]["symmetric"]:
+            ax.plot(settings["zonal_wavemodes"], freq, "k-", zorder=-2)
+
+        # Padding
+        xy = (settings["zonal_wavemodes"][0], 0)
+        width = settings["zonal_wavemodes"][-1] - settings["zonal_wavemodes"][0]
+        height = (
+            dimensions["segmentation_frequency"][1]
+            - dimensions["segmentation_frequency"][0]
+        )
+        tmp_patch = Rectangle(
+            xy, width, height, facecolor="white", edgecolor=(1, 1, 1, 0), zorder=-1
+        )
+        ax.add_patch(tmp_patch)
+        xy = (settings["zonal_wavemodes"][0], dimensions["segmentation_frequency"][-1])
+        width = settings["zonal_wavemodes"][-1] - settings["zonal_wavemodes"][0]
+        height = (
+            dimensions["segmentation_frequency"][1]
+            - dimensions["segmentation_frequency"][0]
+        )
+        tmp_patch = Rectangle(
+            xy, width, height, facecolor="white", edgecolor=(1, 1, 1, 0), zorder=-1
+        )
+        ax.add_patch(tmp_patch)
+        #
+        if settings["wk_filter"]:
+            tmp_patch = Rectangle(
+                xy=(settings["wk_filter"][0][0], settings["wk_filter"][0][1]),
+                width=settings["wk_filter"][1],
+                height=settings["wk_filter"][2],
+                edgecolor="red",
+                linewidth=1,
+                fill=False,
+                zorder=10,
+            )
+            ax.add_patch(tmp_patch)
+        ax.set_xlim(-15, 15)
+        ax.set_ylim(0, 0.5)
+        ax.set_xlabel("Zonal Wavenumbers (cycle per unit)", fontsize=24)
+        ax.set_ylabel("Frequencies (cyles per day)", fontsize=24)
+        ax.tick_params(axis="both", which="major", labelsize=20)
+        ax.set_title(
+            f"{settings["variable_name"]}, Symmetric PSD ratio",
+            fontsize=28,
+        )
+        fig.savefig(
+            os.path.join(
+                ENVIRONMENT_PATH.ABSOLUTE_PATH_IMAGES,
+                f"{settings["variable_name"]}_symmetric_WK99_diagram.png",
+            )
+        )
+
+    # Fig.2 Antisymmetric
+    with context("default"):
+        fig, ax = plt.subplots(
+            nrows=1, ncols=1, figsize=(16, 9), dpi=160, layout="constrained"
+        )
+        plt.rcParams.update({"font.size": 24})
+        x = dimensions["zonal_wavenumber"][wavenumber_indices]
+        y = dimensions["segmentation_frequency"][frequency_indices]
+        z = (antisymmetric_PSD / background_PSD)[frequency_indices, wavenumber_indices]
+        if settings["cmap_type"] == "default":
+            img = ax.contourf(
+                x,
+                y,
+                z,
+                cmap="jet",
+                levels=np.linspace(0.6, 2.0, 15, endpoint=True),
+                extend="both",
+                zorder=-10,
+            )
         else:
-            pass
+            img = ax.contourf(
+                x,
+                y,
+                z,
+                cmap=StepGreys,
+                levels=np.linspace(0.6, 2.0, 15, endpoint=True),
+                extend="both",
+                zorder=-10,
+            )
+        plt.colorbar(img, ax=ax)
+        ax.contour(
+            x,
+            y,
+            z,
+            colors="black",
+            levels=np.linspace(0.6, 2.0, 15, endpoint=True),
+            linewidths=0.4,
+            zorder=-9,
+        )
+        ax.plot([0, 0], [0, 0.5], "k--", lw=1, zorder=-2)
+        ax.plot([-15, 15], [1 / 30, 1 / 30], "k--", lw=1, zorder=-2)
+        ax.plot([-15, 15], [1 / 6, 1 / 6], "k--", lw=1, zorder=-2)
+        ax.plot([-15, 15], [1 / 3, 1 / 3], "k--", lw=1, zorder=-2)
 
-        # Set labels and titles
-        axes[0].set_xlabel("Wavenumbers (cycle per unit)")
-        axes[0].set_ylabel("Frequencies (cyles per day)")
-        axes[0].set_title("Symmetric PSD ratio")
-        axes[1].set_xlabel("Wavenumbers (cycle per unit)")
-        axes[1].set_ylabel("Frequencies (cyles per day)")
-        axes[1].set_title("Antisymmetric PSD ratio")
-        axes[1].set_ylim(0, 0.5)
+        # Add dispersion curves
+        for freq in dispersion_order_list[settings["dispersion_order"]][
+            "antisymmetric"
+        ]:
+            ax.plot(settings["zonal_wavemodes"], freq, "k-", zorder=-2)
 
-        # Set the figure's title for the current latitude
-        clat = grids["lat"][ilat]
-        figure.suptitle(f"{variable_name}, latitude : {clat}")
-        plt.tight_layout()
+        # Padding
+        xy = (settings["zonal_wavemodes"][0], 0)
+        width = settings["zonal_wavemodes"][-1] - settings["zonal_wavemodes"][0]
+        height = (
+            dimensions["segmentation_frequency"][1]
+            - dimensions["segmentation_frequency"][0]
+        )
+        tmp_patch = Rectangle(
+            xy, width, height, facecolor="white", edgecolor=(1, 1, 1, 0), zorder=-1
+        )
+        ax.add_patch(tmp_patch)
+        xy = (settings["zonal_wavemodes"][0], dimensions["segmentation_frequency"][-1])
+        width = settings["zonal_wavemodes"][-1] - settings["zonal_wavemodes"][0]
+        height = (
+            dimensions["segmentation_frequency"][1]
+            - dimensions["segmentation_frequency"][0]
+        )
+        tmp_patch = Rectangle(
+            xy, width, height, facecolor="white", edgecolor=(1, 1, 1, 0), zorder=-1
+        )
+        ax.add_patch(tmp_patch)
 
-        return []
-
-    # Create the animation
-    animation_obj = animation.FuncAnimation(
-        figure,
-        update_frame,
-        frames=step,
-        interval=200,
-        init_func=init_animation,
-    )
-
-    return animation_obj
+        #
+        if settings["wk_filter"]:
+            tmp_patch = Rectangle(
+                xy=(settings["wk_filter"][0][0], settings["wk_filter"][0][1]),
+                width=settings["wk_filter"][1],
+                height=settings["wk_filter"][2],
+                edgecolor="red",
+                linewidth=1,
+                fill=False,
+                zorder=10,
+            )
+            ax.add_patch(tmp_patch)
+        ax.set_xlim(-15, 15)
+        ax.set_ylim(0, 0.5)
+        ax.set_xlabel("Zonal Wavenumbers (cycle per unit)", fontsize=24)
+        ax.set_ylabel("Frequencies (cyles per day)", fontsize=24)
+        ax.tick_params(axis="both", which="major", labelsize=20)
+        ax.set_title(
+            f"{settings["variable_name"]}, Antisymmetric PSD ratio",
+            fontsize=28,
+        )
+        fig.savefig(
+            os.path.join(
+                ENVIRONMENT_PATH.ABSOLUTE_PATH_IMAGES,
+                f"{settings["variable_name"]}_antisymmetric_WK99_diagram.png",
+            )
+        )
+    return None

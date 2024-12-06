@@ -273,11 +273,11 @@ def calculate_potential_temperature(
 
     # Open the dataset and extract dimensions
     with Dataset(filepath) as dataset:
-        dims = {dim: dataset[dim][:] for dim in dataset["theta"].dimensions}
+        dims = {dim: dataset[dim][:] for dim in dataset["pt"].dimensions}
         data_slice = [slice(None)] * len(dims)  # Initialize data slice for indexing
 
         # Slice latitude and longitude based on the INDIAN_MASK region
-        for idx, dim in enumerate(dataset["theta"].dimensions):
+        for idx, dim in enumerate(dataset["pt"].dimensions):
             if dim == "time" or dim == "plev":
                 continue  # Skip time and pressure dimensions
             elif dim == "lat":
@@ -294,7 +294,7 @@ def calculate_potential_temperature(
                 dims[dim] = dims[dim][data_slice[idx]]
 
         # Extract the potential temperature data with the applied slices
-        potential_temperature = dataset["theta"][tuple(data_slice)]
+        potential_temperature = dataset["pt"][tuple(data_slice)]
     # Average over the longitude axis (axis 3)
     potential_temperature = np.mean(potential_temperature, axis=3)
 
@@ -349,11 +349,11 @@ def calculate_equivalent_potential_temperature(
 
     # Open the dataset and extract dimensions
     with Dataset(filepath) as dataset:
-        dims = {dim: dataset[dim][:] for dim in dataset["equiv_theta"].dimensions}
+        dims = {dim: dataset[dim][:] for dim in dataset["ept"].dimensions}
         data_slice = [slice(None)] * len(dims)  # Initialize data slice for indexing
 
         # Slice latitude and longitude based on the INDIAN_MASK region
-        for idx, dim in enumerate(dataset["equiv_theta"].dimensions):
+        for idx, dim in enumerate(dataset["ept"].dimensions):
             if dim == "time" or dim == "plev":
                 continue  # Skip time and pressure dimensions
             elif dim == "lat":
@@ -370,7 +370,7 @@ def calculate_equivalent_potential_temperature(
                 dims[dim] = dims[dim][data_slice[idx]]
 
         # Extract the equivalent potential temperature data with the applied slices
-        equivalent_potential_temperature = dataset["equiv_theta"][tuple(data_slice)]
+        equivalent_potential_temperature = dataset["ept"][tuple(data_slice)]
 
     # Average over the longitude axis (axis 3)
     equivalent_potential_temperature = np.mean(equivalent_potential_temperature, axis=3)
@@ -437,7 +437,7 @@ def calculate_MSE_vertical_flux(
 
     # Open both datasets and extract dimensions
     with Dataset(mse_filepath) as mse_dataset, Dataset(w_filepath) as w_dataset:
-        mse_dims = {dim: mse_dataset[dim][:] for dim in mse_dataset["MSE"].dimensions}
+        mse_dims = {dim: mse_dataset[dim][:] for dim in mse_dataset["mse"].dimensions}
         w_dims = {dim: w_dataset[dim][:] for dim in w_dataset["w"].dimensions}
 
         # Initialize slicing indices for MSE and w
@@ -445,7 +445,7 @@ def calculate_MSE_vertical_flux(
         w_slice = [slice(None)] * len(w_dims)
 
         # Process each dimension to apply slicing and matching
-        for idx, dim in enumerate(mse_dataset["MSE"].dimensions):
+        for idx, dim in enumerate(mse_dataset["mse"].dimensions):
             if dim == "time":
                 # Skip time slicing, use full range
                 continue
@@ -485,7 +485,7 @@ def calculate_MSE_vertical_flux(
                 mse_dims[dim] = mse_dims[dim][mse_slice[idx]]
                 w_dims[dim] = w_dims[dim][w_slice[idx]]
         # Extract MSE and vertical velocity (w) data based on the computed slices
-        moist_static_energy = mse_dataset["MSE"][tuple(mse_slice)]
+        moist_static_energy = mse_dataset["mse"][tuple(mse_slice)]
         pressure_tendency = w_dataset["w"][tuple(w_slice)]
     # Calculate the vertical flux of moist static energy
     moist_static_energy_flux = np.mean(moist_static_energy * pressure_tendency, axis=-1)
@@ -512,269 +512,385 @@ def calculate_MSE_vertical_flux(
 
 
 def calculate_SPSD(
-    file_path: str, variable_name: str = "Undefined", pressure_level: int = -1
+    variable: np.ndarray, dimensions: dict[str, np.ndarray]
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, np.ndarray]]:
     """
-    Calculate the stochastic power spectral density (SPSD) for a given variable using a modified method
-    based on Wheeler and Kiladis (1999) for sectional and global analysis.
+    Performs stochastic wavenumber-frequency spectral analysis based on Wheeler-Kiladis (1999).
 
-    The function processes 3D (time, lat, lon) or 4D (time, pressure, lat, lon) datasets,
-    performing wavenumber-frequency analysis. It returns the symmetric and antisymmetric components
-    of the power spectral density (PSD) and the background PSD.
+    This function processes geophysical data to analyze its spectral characteristics in both
+    zonal wavenumber and temporal frequency domains.
 
     Args:
-        file_path (str): Path to the input dataset file (NetCDF format).
-        variable_name (str): Name of the variable to analyze. Defaults to "Undefined".
-        pressure_level (int): Specific pressure level to extract. Defaults to -1 (no specific level).
+        variable (np.ndarray): Raw multi-dimensional variable
+        dimensions (dict[str, np.ndarray]): dimensions corresponding to variable in dict.
 
     Returns:
         tuple: A tuple containing:
-            - Symmetric components of the PSD.
-            - Antisymmetric components of the PSD.
-            - Background PSD components.
-            - Dictionary of relevant dimensions, including latitude, frequency, and zonal wavenumber.
+            - np.ndarray: Symmetric component of power spectrum of the spectral data.
+            - np.ndarray: Antisymmetric component of power spectrum of the spectral data.
+            - np.ndarray: Smoothed background components of power spectrum.
+            - dict: A dictionary of updated dimensions, including:
+                - 'segmentation_frequency': Frequencies in cycles per day.
+                - 'zonal_wavenumber': Wavenumber axis.
+
+    Steps:
+        1. Preprocess the data:
+            - Remove large-scale signals through detrending and high-pass filtering.
+            - Decompose into symmetric and antisymmetric components along the latitude axis.
+            - Mask latitude and segment the data for spectral analysis.
+        2. Apply temporal and spatial tapering to the data.
+        3. Perform Fourier Transforms and compute spectral density.
+        4. Smooth background components based on frequency and wavenumber, respectively.
+        5. Generate and return symmetric, antisymmetric, and background components along with updated metadata.
     """
-    from gc import collect as free_memory
     from scipy.signal import detrend as scipy_linear_detrend
-    from utils import decompose_symmetric_antisymmetric, segment_data, apply_121_filter
     from constants import INDIAN_MASK, WK99
 
     def high_pass_filter(
-        array: np.ndarray,
-        cutoff: float = (1 / WK99.SEGMENTATION_LENGTH),
-        axis: int = -1,
-    ):
-        array_fft = np.fft.fft(array, axis=axis)
-        frequency = np.fft.fftfreq(array_fft.shape[axis], 1)
-        array_fft[abs(frequency) < cutoff] = 0.0
-        array_filtered = np.fft.ifft(array_fft, axis=axis)
-        return np.real(array_filtered)
-
-    def temporal_taper(
-        array: np.ndarray, portion: float = 0.1, axis: int = -1
+        signal: np.ndarray,
+        axis: int,
+        cutoff_frequency: float = 1 / WK99.SEGMENTATION_LENGTH,
     ) -> np.ndarray:
         """
-        Applies a cosine taper along the specified time axis of the input array.
+        Applies a high-pass filter to remove low-frequency components from a signal.
 
-        Parameters:
-        array (np.ndarray): Input array to be tapered, which can be multi-dimensional.
-        portion (float): Fraction of the array length to taper at each end, between 0 and 1.
-        axis (int): The axis corresponding to time along which the taper is applied.
+        Args:
+            signal (np.ndarray): Input signal as a multi-dimensional array.
+            cutoff_frequency (float): Frequency threshold for the filter. Frequencies below this
+                value are removed. Defaults to 1/SEGMENTATION_LENGTH.
+            axis (int): Axis along which the filter is applied.
 
         Returns:
-        np.ndarray: Array with the taper applied along the specified time axis.
-
-        Note:
-        The `axis` parameter should be set to the index representing the time dimension of `array`.
-        This function reshapes the taper window to broadcast across higher dimensions,
-        enabling consistent application along the specified time axis.
+            np.ndarray: Signal with low-frequency components removed, maintaining the
+            same shape as the input.
         """
-        # Ensure portion is within [0, 1]
-        if not (0 <= portion <= 1):
+        signal_length = signal.shape[axis]
+
+        fourier_component = np.fft.rfft(signal, axis=axis)
+        positive_frequencies = np.fft.rfftfreq(signal_length)
+
+        filter_condition = [slice(None)] * signal.ndim
+        filter_condition[axis] = positive_frequencies < cutoff_frequency
+        fourier_component[tuple(filter_condition)] = 0.0
+
+        filtered_signal = np.fft.irfft(fourier_component, n=signal_length, axis=axis)
+
+        return filtered_signal
+
+    def decompose_symmetric_antisymmetric(
+        variable: np.ndarray, axis: int
+    ) -> np.ndarray:
+        """
+        Decomposes a variable into symmetric and antisymmetric components along a specified axis.
+
+        Args:
+            variable (np.ndarray): Input array to decompose.
+            axis (int): Axis along which to perform the decomposition, typically the latitude axis.
+
+        Returns:
+            np.ndarray: An array with an added first dimension of size 2:
+                - Index 0: Symmetric component.
+                - Index 1: Antisymmetric component.
+        """
+        flipped_variable = np.flip(variable, axis=axis)
+        symmetric_component = (variable + flipped_variable) / 2
+        antisymmetric_component = (variable - flipped_variable) / 2
+
+        return np.array([symmetric_component, antisymmetric_component])
+
+    def segment_data(
+        variable: np.ndarray,
+        axis: int,
+        segment_length: int = WK99.SEGMENTATION_LENGTH,
+        overlap_length: int = WK99.OVERLAP_LENGTH,
+    ) -> np.ndarray:
+        """
+        Segments an array along a specified axis with overlap between segments.
+
+        Args:
+            variable (np.ndarray): Input array to be segmented, with any number of dimensions.
+            axis (int): Axis along which to perform segmentation, typically the time axis.
+            segment_length (int): Length of each segment. Defaults to WK99.SEGMENTATION_LENGTH.
+            overlap_length (int): Overlap length between consecutive segments. Defaults to WK99.OVERLAP_LENGTH.
+
+        Returns:
+            np.ndarray: Segmented array with an additional dimension for the number of segments.
+        """
+        step = segment_length - overlap_length
+        num_segments = (variable.shape[axis] - overlap_length) // step
+
+        segmented_shape = list(variable.shape)
+        segmented_shape.pop(axis)
+        segmented_shape.insert(axis, num_segments)
+        segmented_shape.insert(axis + 1, segment_length)
+
+        segmented_variable = np.empty(shape=tuple(segmented_shape), dtype=float)
+        for i in range(num_segments):
+
+            segment_index_slices = [slice(None)] * segmented_variable.ndim
+            segment_index_slices[axis] = i
+            segment_index_slices = tuple(segment_index_slices)
+
+            variable_window_slices = [slice(None)] * variable.ndim
+            variable_window_slices[axis] = slice(i * step, i * step + segment_length)
+            variable_window_slices = tuple(variable_window_slices)
+
+            segmented_variable[segment_index_slices] = variable[variable_window_slices]
+
+        return segmented_variable
+
+    def apply_121_filter(signal: np.ndarray, axis: int, iterations: int) -> np.ndarray:
+        """
+        Applies a 1-2-1 smoothing filter iteratively along a specified axis.
+
+        Args:
+            signal (np.ndarray): Input array to smooth.
+            axis (int): Axis along which the filter is applied.
+            iterations (int): Number of times to apply the filter.
+
+        Returns:
+            np.ndarray: Smoothed array after applying the filter iteratively.
+        """
+
+        def extend_boundaries(signal: np.ndarray, axis: int) -> np.ndarray:
+            """
+            Extends the boundaries of the array along the specified axis by duplicating edge values.
+            """
+            first_slice = [slice(None)] * signal.ndim
+            last_slice = [slice(None)] * signal.ndim
+            first_slice[axis] = slice(0, 1)
+            last_slice[axis] = slice(-1, None)
+            return np.concatenate(
+                [signal[tuple(first_slice)], signal, signal[tuple(last_slice)]],
+                axis=axis,
+            )
+
+        def convolve_along_axis(
+            signal: np.ndarray,
+            axis: int,
+            kernel: np.ndarray = np.array([1 / 4, 1 / 2, 1 / 4]),
+        ) -> np.ndarray:
+            """
+            Convolves the signal along the specified axis with a given kernel.
+            """
+            extended_signal = extend_boundaries(signal, axis=axis)
+            return np.apply_along_axis(
+                lambda m: np.convolve(m, kernel, mode="valid"),
+                axis=axis,
+                arr=extended_signal,
+            )
+
+        filtered_signal = np.copy(signal)
+        for _ in range(iterations):
+            filtered_signal = convolve_along_axis(filtered_signal, axis)
+
+        return filtered_signal
+
+    def temporal_taper(signal: np.ndarray, portion: float, axis: int) -> np.ndarray:
+        """
+        Applies a cosine taper to the beginning and end of a signal along a specified axis.
+
+        Args:
+            signal (np.ndarray): Input array to be tapered.
+            portion (float): Fraction of the signal's length to taper at both ends. Must be in [0, 1].
+            axis (int): Axis along which the taper is applied, typically the time axis.
+
+        Returns:
+            np.ndarray: Signal with the taper applied along the specified axis.
+        """
+        if not (0.0 <= portion <= 1.0):
             raise ValueError("Portion must be between 0 and 1.")
 
-        # Convert negative axis indexing to positive if needed
-        axis = axis if axis >= 0 else array.ndim + axis
-        if axis < 0 or axis >= array.ndim:
+        axis = axis if axis >= 0 else signal.ndim + axis
+        if axis < 0 or axis >= signal.ndim:
             raise ValueError(
-                f"Axis {axis} is out of bounds for an array with {array.ndim} dimensions."
+                f"Axis {axis} is out of bounds for an array with {signal.ndim} dimensions."
             )
 
-        # Calculate taper length
-        taper_len = int(array.shape[axis] * (portion / 2))
+        taper_width = int(signal.shape[axis] * (portion / 2))
+        taper = 0.5 * (
+            1 - np.cos(2 * np.pi * np.arange(taper_width) / (2 * taper_width))
+        )
 
-        # Generate the cosine taper
-        taper = 0.5 * (1 - np.cos(2 * np.pi * np.arange(taper_len) / (2 * taper_len)))
+        taper_window = np.ones(signal.shape[axis])
+        taper_window[:taper_width] = taper
+        taper_window[-taper_width:] = taper[::-1]
 
-        # Create the full taper window and reshape for broadcasting
-        temp_window = np.ones(array.shape[axis])
-        temp_window[:taper_len] = taper
-        temp_window[-taper_len:] = taper[::-1]
+        broadcast_shape = [1] * signal.ndim
+        broadcast_shape[axis] = signal.shape[axis]
+        taper_window = taper_window.reshape(broadcast_shape)
 
-        # Reshape temp_window to match the array dimensions for broadcasting
-        reshape_shape = [1] * array.ndim  # Start with a shape of all ones
-        reshape_shape[axis] = array.shape[axis]  # Set the size of the time axis
-        temp_window = temp_window.reshape(reshape_shape)  # Reshape for broadcasting
-
-        # Apply the taper window along the specified time axis
-        return array * temp_window
+        return signal * taper_window
 
     def spatial_taper(
-        array: np.ndarray,
+        signal: np.ndarray,
+        dimensions: dict[str, np.ndarray],
+        axis: int,
         lon_min: float,
         lon_max: float,
-        dims: dict[str, np.ndarray],
-        axis: int = -1,
     ) -> np.ndarray:
         """
-        Applies a spatial taper along the specified longitudinal axis of the input array.
+        Applies a spatial taper along a specified longitudinal axis.
 
-        Parameters:
-        array (np.ndarray): Input array to be tapered, which can be multi-dimensional.
-        lon_min (float): Minimum longitude of the region to leave intact.
-        lon_max (float): Maximum longitude of the region to leave intact.
-        dims (dict): Dictionary containing axis values, with "lon" as the key for longitude values.
-        axis (int): Axis corresponding to the longitude dimension along which the taper is applied.
+        Args:
+            signal (np.ndarray): Input array to be tapered.
+            dimensions (dict[str, np.ndarray]): Dictionary containing dimension values, including 'lon' for longitude.
+            axis (int): Axis along which the tapering is applied, typically the longitude axis.
+            lon_min (float): Minimum longitude to retain without tapering.
+            lon_max (float): Maximum longitude to retain without tapering.
 
         Returns:
-        np.ndarray: Array with the taper applied along the specified longitudinal axis.
-
-        Note:
-        This function applies a Hanning-like tapering function outside the specified longitudinal range
-        (lon_min, lon_max), smoothly transitioning values to zero outside this region.
+            np.ndarray: Signal with the spatial taper applied along the specified axis.
         """
-        # Retrieve longitude values from dims
-        if "lon" not in dims:
+        if "lon" not in dimensions:
             raise ValueError(
-                "Longitude values must be provided in dims under the key 'lon'."
+                "Longitude values must be provided in dimensions under the key 'lon'."
             )
-        lon = dims["lon"]
+        lon = dimensions["lon"]
 
-        # Convert negative axis indexing to positive if needed
-        axis = axis if axis >= 0 else array.ndim + axis
-        if axis < 0 or axis >= array.ndim:
+        axis = axis if axis >= 0 else signal.ndim + axis
+        if axis < 0 or axis >= signal.ndim:
             raise ValueError(
-                f"Axis {axis} is out of bounds for an array with {array.ndim} dimensions."
+                f"Axis {axis} is out of bounds for an array with {signal.ndim} dimensions."
             )
 
-        # Create a boolean mask for the target longitudinal range
-        lon_mask = (lon >= lon_min) & (lon <= lon_max)
+        regional_mask = (lon >= lon_min) & (lon <= lon_max)
+        taper_window = np.zeros_like(lon, dtype=float)
 
-        # Initialize the tapering window for longitude
-        lon_window = np.zeros_like(lon, dtype=float)
-
-        # Set up the tapered region
-        lon_region = lon_window[lon_mask]
-        taper_len = (
-            len(lon_region) * 0.1
-        )  # Define taper length as 1/10 of the region size
-
-        # Apply tapering conditions
-        if np.all(lon_mask):
-            lon_window = np.ones_like(
-                lon_window
-            )  # No tapering if the full region is within the mask
+        if np.all(regional_mask):
+            taper_window = np.ones_like(taper_window)
         else:
-            # Generate the cosine taper
+            regional_taper_window = taper_window[regional_mask]
+            taper_width = int(len(regional_taper_window) * 0.1)
             taper = 0.5 * (
-                1 - np.cos(2 * np.pi * np.arange(taper_len) / (2 * taper_len))
+                1 - np.cos(2 * np.pi * np.arange(taper_width) / (2 * taper_width))
             )
 
-            # Apply the taper at the beginning and end of the masked region
-            lon_region[:taper_len] = taper
-            lon_region[taper_len:-taper_len] = 1
-            lon_region[-taper_len:] = taper[::-1]
+            regional_taper_window[:taper_width] = taper
+            regional_taper_window[taper_width:-taper_width] = 1
+            regional_taper_window[-taper_width:] = taper[::-1]
+            taper_window[regional_mask] = regional_taper_window
 
-            # Update the taper window with the tapered region
-            lon_window[lon_mask] = lon_region
+        broadcast_shape = [1] * signal.ndim
+        broadcast_shape[axis] = len(taper_window)
+        taper_window = taper_window.reshape(broadcast_shape)
 
-        # Reshape lon_window to match the array dimensions for broadcasting
-        reshape_shape = [1] * array.ndim
-        reshape_shape[axis] = len(lon)
-        lon_window = lon_window.reshape(reshape_shape)
+        return signal * taper_window
 
-        # Apply the spatial taper along the specified longitudinal axis
-        return array * lon_window
+    # Remove large-scale signals through linear detrending and high-pass filtering
+    variable = scipy_linear_detrend(variable, axis=0)
+    variable = high_pass_filter(variable, axis=0)
 
-    # Load data and dimensions from the dataset
-    with Dataset(file_path) as dataset:
-        dims = {dim: dataset[dim][:] for dim in dataset[variable_name].dimensions}
-        data_slices = [slice(None)] * len(dataset[variable_name].dimensions)
+    # Decompose the variable into symmetric and antisymmetric components along the latitude axis
+    variable = decompose_symmetric_antisymmetric(variable, axis=1)
 
-        for idx, dim in enumerate(dataset[variable_name].dimensions):
-            if dim == "time" or dim == "lat" or dim == "lon":
-                continue
-            elif dim == "plev":
-                data_slices[idx] = pressure_level
-                dims[dim] = dims[dim][data_slices[idx]]
-
-        # Extract the data for the variable using the slices
-        data = dataset[variable_name][tuple(data_slices)]
-
-    # Remove dominant signals
-    data = scipy_linear_detrend(data, axis=0)
-    data = high_pass_filter(data, axis=0)
-
-    # Decompose into Sym/Asym
-    data = decompose_symmetric_antisymmetric(data, axis=1)
-
-    # Mask the symmetric and antisymmetric components by latitude
-    lat_mask = (dims["lat"] <= INDIAN_MASK.LATITUDE_NORTH) & (
-        dims["lat"] >= INDIAN_MASK.LATITUDE_SOUTH
+    # Apply a latitude mask to limit the data to the specified latitude range
+    lat_mask = (dimensions["lat"] <= INDIAN_MASK.LATITUDE_NORTH) & (
+        dimensions["lat"] >= INDIAN_MASK.LATITUDE_SOUTH
     )
-    data = data[:, :, lat_mask]
-    dims["lat"] = dims["lat"][lat_mask]
+    variable = variable[:, :, lat_mask, :]
+    dimensions["lat"] = dimensions["lat"][lat_mask]
 
-    # Segment the components for analysis
-    data = segment_data(np.copy(data), WK99.SEGMENTATION_LENGTH, WK99.OVERLAP_LENGTH)
+    # Segment the data along the time axis for spectral analysis
+    variable = segment_data(
+        variable,
+        axis=1,
+        segment_length=WK99.SEGMENTATION_LENGTH,
+        overlap_length=WK99.OVERLAP_LENGTH,
+    )
 
-    # Apply linear detrending
-    data = scipy_linear_detrend(data, axis=2)
+    # Remove trends in the time axis
+    variable = scipy_linear_detrend(variable, axis=2)
 
-    # Apply temporal window
-    data = temporal_taper(data, portion=0.2, axis=2)
-    # Apply spatial window
-    data = spatial_taper(
-        data,
-        lon_min=INDIAN_MASK.LONGITUDE_WEST,
-        lon_max=INDIAN_MASK.LONGITUDE_EAST,
-        dims=dims,
+    # Apply a temporal taper to reduce spectral leaking along the time axis
+    variable = temporal_taper(variable, portion=0.2, axis=2)
+
+    # Apply a spatial taper to smoothly limit data to the specified longitudinal range
+    variable = spatial_taper(
+        variable,
+        dimensions=dimensions,
         axis=-1,
+        lon_min=INDIAN_MASK.LONGITUDE_WEST - 30,
+        lon_max=INDIAN_MASK.LONGITUDE_EAST + 30,
     )
 
-    # Perform FFT in both zonal wavenumber (lon) and frequency (time) directions
-    data = np.fft.fft(data, axis=-1, norm="ortho")
-    data = np.fft.ifft(data, axis=2, norm="ortho")
+    # Perform Fourier Transform along longitude (zonal wavenumber) and time (frequency)
+    variable = np.fft.fft(variable, axis=-1, norm="ortho")
+    variable = np.fft.ifft(variable, axis=2, norm="ortho")
 
-    # Compute power spectral densities (PSD) by averaging over segments
-    data = np.mean(np.abs(data) ** 2, axis=1)
+    # Compute the stochastic power spectral density (PSD) by averaging over segments
+    variable = np.mean(np.abs(variable) ** 2, axis=1)
 
-    # Shift zero-frequency and zero-wavenumber components to center for visualization
-    data = np.fft.fftshift(data, axes=(1, -1))
+    # Compute the stochastic  power spectral density (PSD) by summing up over latitudes
+    variable = np.sum(variable, axis=2)
 
-    # Generate frequency and wavenumber axes for output
+    # Center the zero-frequency and zero-wavenumber components for visualization
+    variable = np.fft.fftshift(variable, axes=(1, -1))
+
+    # Compute background components using a smoothing filter
+    background_components = np.mean(variable, axis=0)
+
+    # Generate wavenumber and frequency axes for output
     ordinary_wavenumber = np.fft.fftshift(
-        np.fft.fftfreq(len(dims["lon"]), 1 / len(dims["lon"]))
+        np.fft.fftfreq(len(dimensions["lon"]), 1 / len(dimensions["lon"]))
     )
     ordinary_frequency = np.fft.fftshift(
         np.fft.fftfreq(WK99.SEGMENTATION_LENGTH, 1 / WK99.SEGMENTATION_LENGTH)
     )
     CPD_frequency = (
         ordinary_frequency / len(ordinary_frequency) * WK99.SAMPLE_RATE
-    )  # Cycles per day (Assumed daily data)
+    )  # Convert frequency to cycles per day (CPD)
 
-    # Calculate background components using a smoothing filter
-    background_components = np.mean(data, axis=0)
+    # Smooth symmetric and antisymmetric components over frequencies
+    variable[:, CPD_frequency > 0] = apply_121_filter(
+        variable[:, CPD_frequency > 0], axis=1, iterations=1
+    )
+    variable[:, CPD_frequency < 0] = apply_121_filter(
+        variable[:, CPD_frequency < 0], axis=1, iterations=1
+    )
+
+    # Smooth background components over wavenumbers
     for i, freq in enumerate(CPD_frequency):
-        if abs(freq) <= 0.1:
+        if abs(freq) == 0.0:
+            continue
+        elif abs(freq) <= 0.1:
             background_components[i] = apply_121_filter(
-                background_components[i], iterations=5
+                background_components[i], axis=0, iterations=5
             )
         elif abs(freq) <= 0.2:
             background_components[i] = apply_121_filter(
-                background_components[i], iterations=10
+                background_components[i], axis=0, iterations=10
             )
         elif abs(freq) <= 0.3:
             background_components[i] = apply_121_filter(
-                background_components[i], iterations=20
+                background_components[i], axis=0, iterations=20
             )
         else:
             background_components[i] = apply_121_filter(
-                background_components[i], iterations=40
+                background_components[i], axis=0, iterations=40
             )
+
+    # Smooth background components over frequencies
     background_components[CPD_frequency > 0] = apply_121_filter(
         background_components[CPD_frequency > 0], axis=0, iterations=10
     )
+    background_components[CPD_frequency < 0] = apply_121_filter(
+        background_components[CPD_frequency < 0], axis=0, iterations=10
+    )
 
-    # Update dimension metadata for the output
-    dims.update(
+    # Fill NaN in mean
+    variable[:, CPD_frequency == 0] = np.nan
+    background_components[CPD_frequency == 0] = np.nan
+
+    # Update the dimensions dictionary with computed frequency and wavenumber axes
+    dimensions.update(
         {
             "segmentation_frequency": CPD_frequency,
             "zonal_wavenumber": ordinary_wavenumber,
         }
     )
 
-    return (data[0], data[1], background_components), dims
+    return variable[0], variable[1], background_components, dimensions
 
 
 def calculate_filtered_signal(

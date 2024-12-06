@@ -19,6 +19,7 @@ class ProjectPathManager:
     ABSOLUTE_PATH_TEMPEST: str
     ABSOLUTE_PATH_SATELLITE_TEST: str
     ABSOLUTE_PATH_IMAGES: str
+    ABSOLUTE_PATH_IMAGES_PRELIMINARY: str
 
 
 # Define the absolute paths for various directories
@@ -30,6 +31,7 @@ ENVIRONMENT_PATH = ProjectPathManager(
     ABSOLUTE_PATH_TEMPEST="/work/b08209033/DATA/IndianMonsoon/TempestExtremes",
     ABSOLUTE_PATH_SATELLITE_TEST="/work/b08209033/DATA/IndianMonsoon/Satellite",
     ABSOLUTE_PATH_IMAGES="/home/b08209033/IndianMonsoon/img",
+    ABSOLUTE_PATH_IMAGES_PRELIMINARY="/home/b08209033/IndianMonsoon/img/preliminary",
 )
 
 
@@ -79,18 +81,18 @@ class IndianMonsoonRegionMask:
 
 
 # The lat/lon boundaries for the Indian monsoon region
-# INDIAN_MASK = IndianMonsoonRegionMask(
-#     LATITUDE_NORTH=20,
-#     LATITUDE_SOUTH=5,
-#     LONGITUDE_EAST=90,
-#     LONGITUDE_WEST=45,
-# )
 INDIAN_MASK = IndianMonsoonRegionMask(
-    LATITUDE_NORTH=15,
-    LATITUDE_SOUTH=-15,
-    LONGITUDE_EAST=360,
-    LONGITUDE_WEST=0,
+    LATITUDE_NORTH=20,
+    LATITUDE_SOUTH=5,
+    LONGITUDE_EAST=90,
+    LONGITUDE_WEST=45,
 )
+# INDIAN_MASK = IndianMonsoonRegionMask(
+#     LATITUDE_NORTH=15,
+#     LATITUDE_SOUTH=-15,
+#     LONGITUDE_EAST=360,
+#     LONGITUDE_WEST=0,
+# )
 
 
 ######################
