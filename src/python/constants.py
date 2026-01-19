@@ -80,12 +80,12 @@ class IndianMonsoonRegionMask:
     LONGITUDE_WEST: float
 
 
-# The lat/lon boundaries for the Indian monsoon region
+# # The lat/lon boundaries for the Indian monsoon region
 INDIAN_MASK = IndianMonsoonRegionMask(
-    LATITUDE_NORTH=20,
-    LATITUDE_SOUTH=5,
-    LONGITUDE_EAST=90,
-    LONGITUDE_WEST=45,
+    LATITUDE_NORTH=35,
+    LATITUDE_SOUTH=-5,
+    LONGITUDE_EAST=120,
+    LONGITUDE_WEST=15,
 )
 # INDIAN_MASK = IndianMonsoonRegionMask(
 #     LATITUDE_NORTH=15,
@@ -101,7 +101,7 @@ INDIAN_MASK = IndianMonsoonRegionMask(
 
 
 @dataclass(frozen=True)
-class ZonalWindShearRegionMask:
+class RegionMask_BinWang_2008:
     """
     Define the latitudinal and longitudinal bounds of the predefined zonal wind shear region.
     Follow BIN WANG
@@ -118,7 +118,7 @@ class ZonalWindShearRegionMask:
 
 
 # The lat/lon boundaries for the predefined zonal wind shear region
-ZWS_MASK = ZonalWindShearRegionMask(
+INDIAN_MONSOON_MASK = RegionMask_BinWang_2008(
     NORTHERN_LATITUDE_NORTH=30,
     NORTHERN_LATITUDE_SOUTH=20,
     NORTHERN_LONGITUDE_EAST=90,
@@ -161,8 +161,7 @@ class WK99Constants:
 
     SEGMENTATION_LENGTH: int  # Length of each segment
     OVERLAP_LENGTH: int  # Overlap between segments
-    SAMPLE_RATE: int  # Sample rate per day
 
 
 # Constants for the WK99 data segmentation approach
-WK99 = WK99Constants(SEGMENTATION_LENGTH=96, OVERLAP_LENGTH=10, SAMPLE_RATE=1)
+WK99 = WK99Constants(SEGMENTATION_LENGTH=96, OVERLAP_LENGTH=65)
